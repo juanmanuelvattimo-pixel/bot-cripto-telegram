@@ -4,30 +4,6 @@ import ccxt
 import pandas as pd
 import ta
 import threading
-import os
-import sys
-
-# ==========================================
-# 0. CONTROL DE INSTANCIA ÚNICA
-# ==========================================
-LOCK_FILE = "bot_trading.lock"
-
-if os.path.exists(LOCK_FILE):
-    print("❌ ¡ALERTA! Ya hay otra instancia de este bot ejecutándose.")
-    sys.exit()
-
-with open(LOCK_FILE, "w") as f:
-    f.write(str(os.getpid()))
-
-def limpiar_candado():
-    if os.path.exists(LOCK_FILE):
-        try:
-            os.remove(LOCK_FILE)
-        except:
-            pass
-
-import atexit
-atexit.register(limpiar_candado)
 
 # ==========================================
 # 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO ANTI-DUPLICADOS GLOBAL
@@ -35,7 +11,6 @@ atexit.register(limpiar_candado)
 TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
 CHAT_ID = "1473411725"
 
-# Control riguroso de duplicados exactos en ráfaga
 ultimo_mensaje_enviado = ""
 tiempo_ultimo_envio = 0
 
@@ -46,8 +21,7 @@ def enviar_telegram(mensaje):
     
     tiempo_actual = time.time()
     
-    # BLOQUEO ABSOLUTO: Si el mensaje es exactamente igual al anterior 
-    # y han pasado menos de 15 segundos, SE DESCARTA POR COMPLETO.
+    # Bloqueo absoluto si se intenta enviar el mismo texto en menos de 15 segundos
     if mensaje == ultimo_mensaje_enviado and (tiempo_actual - tiempo_ultimo_envio) < 15.0:
         return
 
@@ -253,7 +227,7 @@ def analizar_cripto_individual(ticker_raw):
     enviar_telegram(msj)
 
 # ==========================================
-# 6. ESCUCHADOR DE TELEGRAM BLINDADO CON OFFSET ESTRICTO
+# 6. ESCUCHADOR DE TELEGRAM BLINDADO
 # ==========================================
 def escuchar_mensajes_telegram():
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -273,7 +247,7 @@ def escuchar_mensajes_telegram():
             
             if resp.get("ok"):
                 for result in resp.get("result", []):
-                    offset = result["update_id"] + 1  # Borra y confirma el paquete al instante
+                    offset = result["update_id"] + 1
                     message = result.get("message", {})
                     text = message.get("text", "").strip()
                     
