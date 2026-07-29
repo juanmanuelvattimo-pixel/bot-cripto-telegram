@@ -440,14 +440,25 @@ def analizar_mercado():
     except Exception as e:
         print(f"Error en el escaneo general: {e}")
 
+import random
+
 # ==========================================
-# 8. BUCLE PRINCIPAL
+# 8. BUCLE PRINCIPAL CON ARRANQUE ESCALONADO
 # ==========================================
 if __name__ == "__main__":
+    # Iniciar hilo para escuchar comandos de Telegram en paralelo
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
+    # Pequeña pausa aleatoria (10 a 30 segundos) para desincronizar contenedores gemelos en la nube
+    retraso_inicial = random.randint(10, 30)
+    print(f"⏳ Esperando {retraso_inicial} segundos para sincronización inicial...")
+    time.sleep(retraso_inicial)
+    
+    # Primer escaneo del mercado
     analizar_mercado()
+    
+    # Ciclo principal (cada 1 hora)
     while True:
         time.sleep(7200)
         analizar_mercado()
