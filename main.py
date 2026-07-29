@@ -440,25 +440,42 @@ def analizar_mercado():
     except Exception as e:
         print(f"Error en el escaneo general: {e}")
 
-import random
+# ==========================================
+# 8. BUCLE PRINCIPAL CON CANDADO ABSOLUTO
+# ==========================================
+import sys
 
-# ==========================================
-# 8. BUCLE PRINCIPAL CON ARRANQUE ESCALONADO
-# ==========================================
 if __name__ == "__main__":
-    # Iniciar hilo para escuchar comandos de Telegram en paralelo
+    # Evitar doble ejecución interna en el mismo contenedor
+    lock_file = "app.lock"
+    if os.path.exists(lock_file):
+        # Si el archivo de bloqueo ya existe y es muy reciente, matamos este proceso duplicado al instante
+        if (time.time() - os.path.getmtime(lock_file)) < 10:
+            print("🛑 Instancia duplicada detectada internamente. Cerrando proceso secundario.")
+        sys.exit(0)
+        
+    try:
+        with open(lock_file, "w") as f:
+            f.write(str(os.getpid()))
+    except Exception:
+        pass
+
+    # Iniciar hilo de Telegram
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    # Pequeña pausa aleatoria (10 a 30 segundos) para desincronizar contenedores gemelos en la nube
-    retraso_inicial = random.randint(10, 30)
-    print(f"⏳ Esperando {retraso_inicial} segundos para sincronización inicial...")
-    time.sleep(retraso_inicial)
+    print("🚀 Bot iniciado correctamente (Instancia Única).")
     
-    # Primer escaneo del mercado
+    # Primer escaneo
     analizar_mercado()
     
-    # Ciclo principal (cada 1 hora)
+    # Bucle principal (cada 7200 segundos / 2 horas)
     while True:
         time.sleep(7200)
+        # Actualizar la marca del archivo de bloqueo para mantenerlo vivo
+        try:
+            with open(lock_file, "w") as f:
+                f.write(str(os.getpid()))
+        except Exception:
+            pass
         analizar_mercado()
