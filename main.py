@@ -9,6 +9,24 @@ import socketserver
 import threading
 import os
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot OK")
+
+def iniciar_servidor_dummy():
+    import os
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    server.serve_forever()
+
+# Iniciar servidor web fantasma en un hilo secundario
+threading.Thread(target=iniciar_servidor_dummy, daemon=True).start()
+
 def iniciar_servidor_dummy():
     port = int(os.environ.get("PORT", 10000))
     handler = http.server.SimpleHTTPRequestHandler
