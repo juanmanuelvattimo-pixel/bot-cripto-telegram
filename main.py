@@ -5,7 +5,6 @@ import pandas as pd
 import ta
 import threading
 
-
 # ==========================================
 # 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO MULTI-MENSAJE
 # ==========================================
@@ -273,9 +272,16 @@ def escuchar_mensajes_telegram():
         time.sleep(1)
 
 # ==========================================
-# 7. ESCANEO Y CLASIFICACIÓN GENERAL
+# 7. ESCANEO Y CLASIFICACIÓN GENERAL (BLINDADO)
 # ==========================================
+escaneo_en_curso = False
+
 def analizar_mercado():
+    global escaneo_en_curso
+    if escaneo_en_curso:
+        return
+    
+    escaneo_en_curso = True
     print("🔎 Escaneando mercado...")
     
     try:
@@ -400,7 +406,7 @@ def analizar_mercado():
                 mensaje += f"1H {res['1h']} | 4H {res['4h']} | 1D {res['1d']} | 1S {res['1w']}\n\n"
             
             enviar_telegram(mensaje)
-            time.sleep(1.5)
+            time.sleep(2.0)
 
         enviar_lista_telegram("🟢 *TOP PERFECCIÓN ALCISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", longs_perfectos)
         enviar_lista_telegram("📈 *TOP TENDENCIA ALCISTA (1D + 1S)*", "Tendencia Mayor Alcista Confirmada", longs_diario_semanal)
@@ -425,6 +431,8 @@ def analizar_mercado():
 
     except Exception as e:
         print(f"Error en el escaneo general: {e}")
+    finally:
+        escaneo_en_curso = False
 
 # ==========================================
 # 8. BUCLE PRINCIPAL
