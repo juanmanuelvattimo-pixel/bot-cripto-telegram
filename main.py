@@ -5,25 +5,31 @@ import pandas as pd
 import ta
 import threading
 
+
 # ==========================================
-# 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO ANTI-DUPLICADOS GLOBAL
+# 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO MULTI-MENSAJE
 # ==========================================
 TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
 CHAT_ID = "1473411725"
 
-ultimo_mensaje_enviado = ""
+# Memoria para recordar los últimos mensajes enviados y evitar duplicados en ráfaga
+historial_mensajes_enviados = []
 tiempo_ultimo_envio = 0
 
 def enviar_telegram(mensaje):
-    global ultimo_mensaje_enviado, tiempo_ultimo_envio
+    global historial_mensajes_enviados, tiempo_ultimo_envio
     if not mensaje or not mensaje.strip():
         return
     
     tiempo_actual = time.time()
     
-    # Bloqueo absoluto si se intenta enviar el mismo texto en menos de 15 segundos
-    if mensaje == ultimo_mensaje_enviado and (tiempo_actual - tiempo_ultimo_envio) < 15.0:
+    # Si este mensaje exacto ya se mandó recientemente, se descarta
+    if mensaje in historial_mensajes_enviados:
         return
+        
+    # Forzar una pausa mínima de 3 segundos entre cada envío en ráfaga
+    if (tiempo_actual - tiempo_ultimo_envio) < 3.0:
+        time.sleep(3.0)
 
     if len(mensaje) > 3500:
         mensaje = mensaje[:3500] + "\n\n⚠️ _(Mensaje recortado por tamaño)_"
@@ -37,8 +43,11 @@ def enviar_telegram(mensaje):
         }
         res = requests.post(url, data=data, timeout=10)
         if res.status_code == 200:
-            ultimo_mensaje_enviado = mensaje
             tiempo_ultimo_envio = time.time()
+            historial_mensajes_enviados.append(mensaje)
+            # Mantener solo los últimos 15 mensajes en memoria
+            if len(historial_mensajes_enviados) > 15:
+                historial_mensajes_enviados.pop(0)
     except Exception as e:
         print(f"Error enviando mensaje a Telegram: {e}")
 
