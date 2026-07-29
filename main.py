@@ -6,15 +6,23 @@ import ta
 import threading
 
 # ==========================================
-# 1. CONFIGURACIÓN DE TELEGRAM
+# 1. CONFIGURACIÓN DE TELEGRAM Y CONTROL ANTI-REPETICIÓN INSTANTÁNEA
 # ==========================================
 TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
 CHAT_ID = "1473411725"
 
+# Variable global para evitar que se envíe el mismo mensaje 2 veces en el mismo instante
+ultimo_mensaje_enviado = ""
+
 def enviar_telegram(mensaje):
+    global ultimo_mensaje_enviado
     if not mensaje or not mensaje.strip():
         return
     
+    # Bloqueo: si el mensaje es idéntico al que acaba de salir, se ignora la repetición
+    if mensaje == ultimo_mensaje_enviado:
+        return
+
     if len(mensaje) > 3500:
         mensaje = mensaje[:3500] + "\n\n⚠️ _(Mensaje recortado por tamaño)_"
 
@@ -25,7 +33,9 @@ def enviar_telegram(mensaje):
             "text": mensaje,
             "parse_mode": "Markdown"
         }
-        requests.post(url, data=data, timeout=10)
+        res = requests.post(url, data=data, timeout=10)
+        if res.status_code == 200:
+            ultimo_mensaje_enviado = mensaje
     except Exception as e:
         print(f"Error enviando mensaje a Telegram: {e}")
 
@@ -61,7 +71,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# 4. MOTOR DE ANÁLISIS MEJORADO Y EXHAUSTIVO
+# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
@@ -79,15 +89,15 @@ def analizar_par_completo(symbol, timeframe):
         df['ema20'] = ta.trend.ema_indicator(df['close'], window=min(20, n_velas-1))
         df['ema55'] = ta.trend.ema_indicator(df['close'], window=min(55, n_velas-1))
         
-        # 2. RSI & MFI (Money Flow Index - Flujo de Capital de Cipher B)
+        # 2. RSI & MFI
         df['rsi'] = ta.momentum.rsi(df['close'], window=min(14, n_velas-1))
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=min(14, n_velas-1))
         
-        # 3. Volumen Institucional (Volumen vs EMA de Volumen)
+        # 3. Volumen Institucional
         df['vol_ema'] = ta.trend.ema_indicator(df['volume'], window=min(20, n_velas-1))
         volumen_alto = df['volume'].iloc[-1] > df['vol_ema'].iloc[-1]
         
-        # 4. ADX & Direccionalidad (+DI / -DI)
+        # 4. ADX & Direccionalidad
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=min(14, n_velas-1))
         df['adx'] = adx_ind.adx()
         df['plus_di'] = adx_ind.adx_pos()
@@ -127,7 +137,7 @@ def analizar_par_completo(symbol, timeframe):
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
-        # Cálculo Fibonacci
+        # Fibonacci
         recent_df = df.tail(30)
         swing_high = recent_df['high'].max()
         swing_low = recent_df['low'].min()
@@ -141,7 +151,6 @@ def analizar_par_completo(symbol, timeframe):
         fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
         fibo_tp3_short = precio - (rango_fibo * 1.618)
 
-        # Evaluación de sistema de puntos (Exigiendo volumen y MFI)
         puntos_alcistas = sum([precio > e55, e10 > e20, wt1 > wt2, oracle_actual, mfi > 50])
         puntos_bajistas = sum([precio <= e55, e10 <= e20, wt1 <= wt2, not oracle_actual, mfi <= 50])
 
@@ -174,7 +183,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# 5. CONSULTA INDIVIDUAL ULTRA EXHAUSTIVA (/analizar)
+# 5. CONSULTA INDIVIDUAL (/analizar)
 # ==========================================
 def analizar_cripto_individual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
@@ -223,12 +232,19 @@ def analizar_cripto_individual(ticker_raw):
     enviar_telegram(msj)
 
 # ==========================================
-# 6. ESCUCHADOR DE COMANDOS TELEGRAM
+# 6. ESCUCHADOR DE TELEGRAM (CONTROL ANTI-DUPLICADOS)
 # ==========================================
 def escuchar_mensajes_telegram():
     offset = None
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
     
+    try:
+        init_resp = requests.get(url, params={"timeout": 1}, timeout=5).json()
+        if init_resp.get("ok") and init_resp.get("result"):
+            offset = init_resp["result"][-1]["update_id"] + 1
+    except Exception:
+        pass
+
     while True:
         try:
             params = {"timeout": 10, "offset": offset}
@@ -253,10 +269,10 @@ def escuchar_mensajes_telegram():
         time.sleep(2)
 
 # ==========================================
-# 7. ESCANEO Y CLASIFICACIÓN GENERAL (SNIPER CON FILTRO R/R Y VOLUMEN)
+# 7. ESCANEO Y CLASIFICACIÓN GENERAL
 # ==========================================
 def analizar_mercado():
-    print("🔎 Escaneando mercado (Sniper 10x)...")
+    print("🔎 Escaneando mercado...")
     
     try:
         exchange.load_markets()
@@ -316,9 +332,7 @@ def analizar_mercado():
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
                     shorts_diario_semanal.append(datos_par)
 
-               # ==========================================
-                # EVALUADOR SNIPER 10X (TPs ADAPTATIVOS POR ATR + ESTRUCTURA)
-                # ==========================================
+                # EVALUADOR SNIPER 10X
                 h1 = analisis_tf['1h']
                 precio_act = h1['precio']
                 atr_act = h1['atr']
@@ -326,27 +340,20 @@ def analizar_mercado():
 
                 # LONG 10X SNIPER
                 if estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" and adx_aprobado and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA")):
-                    # SL Técnico adaptado
                     sl_tecnico = min(precio_act - (1.2 * atr_act), h1['soporte'] * 0.998)
                     sl_max_10x = precio_act * 0.983
                     sl_final = max(sl_tecnico, sl_max_10x)
                     pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
                     
-                    # Distancia de riesgo base
-                    distancia_sl = precio_act - sl_final
+                    fibo = h1['fibo_long']
+                    tp1 = max(fibo['tp1'], precio_act * 1.015)
+                    tp2 = max(fibo['tp2'], precio_act * 1.030)
+                    tp3 = max(fibo['tp3'], precio_act * 1.050)
 
-                    # TPs EQUILIBRADOS:
-                    # TP1: Mínimo 1.5x el SL o 1.5x ATR (Equilibrado para no quedar pegado)
-                    tp1 = precio_act + max(distancia_sl * 1.5, atr_act * 1.5)
-                    # TP2: Nivel estructural de resistencia cercana (o 2.5x ATR si la resistencia está muy lejos)
-                    tp2 = min(h1['resistencia'], precio_act + (atr_act * 2.5))
-                    if tp2 <= tp1: tp2 = tp1 + (atr_act * 1.0) # Asegurar escalonamiento
-                    # TP3: Proyección runner (3.5x ATR)
-                    tp3 = precio_act + (atr_act * 3.5)
-
-                    # Validar Ratio Riesgo Beneficio (Mínimo 1:1.5 al TP1)
-                    beneficio_tp1 = tp1 - precio_act
-                    if distancia_sl > 0 and (beneficio_tp1 / distancia_sl) >= 1.5:
+                    riesgo = precio_act - sl_final
+                    beneficio = tp1 - precio_act
+                    
+                    if riesgo > 0 and (beneficio / riesgo) >= 1.3:
                         entradas_sniper.append({
                             'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -354,29 +361,25 @@ def analizar_mercado():
                             'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                             'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                             'oracle': h1['oracle_estado'],
-                            'rr': f"1:{(beneficio_tp1/distancia_sl):.1f}"
+                            'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
                 # SHORT 10X SNIPER
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴" and estados['4h'] == "🔴" and adx_aprobado and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 VENTA")):
-                    # SL Técnico adaptado
                     sl_tecnico = max(precio_act + (1.2 * atr_act), h1['resistencia'] * 1.002)
                     sl_max_10x = precio_act * 1.017
                     sl_final = min(sl_tecnico, sl_max_10x)
                     pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
                     
-                    # Distancia de riesgo base
-                    distancia_sl = sl_final - precio_act
+                    fibo = h1['fibo_short']
+                    tp1 = min(fibo['tp1'], precio_act * 0.985)
+                    tp2 = min(fibo['tp2'], precio_act * 0.970)
+                    tp3 = min(fibo['tp3'], precio_act * 0.950)
 
-                    # TPs EQUILIBRADOS:
-                    tp1 = precio_act - max(distancia_sl * 1.5, atr_act * 1.5)
-                    tp2 = max(h1['soporte'], precio_act - (atr_act * 2.5))
-                    if tp2 >= tp1: tp2 = tp1 - (atr_act * 1.0) # Asegurar escalonamiento
-                    tp3 = precio_act - (atr_act * 3.5)
+                    riesgo = sl_final - precio_act
+                    beneficio = precio_act - tp1
 
-                    # Validar Ratio Riesgo Beneficio
-                    beneficio_tp1 = precio_act - tp1
-                    if distancia_sl > 0 and (beneficio_tp1 / distancia_sl) >= 1.5:
+                    if riesgo > 0 and (beneficio / riesgo) >= 1.3:
                         entradas_sniper.append({
                             'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -384,7 +387,7 @@ def analizar_mercado():
                             'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
                             'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
                             'oracle': h1['oracle_estado'],
-                            'rr': f"1:{(beneficio_tp1/distancia_sl):.1f}"
+                            'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
         def enviar_lista_telegram(titulo, descripcion, lista):
@@ -398,6 +401,7 @@ def analizar_mercado():
             enviar_telegram(mensaje)
             time.sleep(1.5)
 
+        # Enviar reportes
         enviar_lista_telegram("🟢 *TOP PERFECCIÓN ALCISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", longs_perfectos)
         enviar_lista_telegram("📈 *TOP TENDENCIA ALCISTA (1D + 1S)*", "Tendencia Mayor Alcista Confirmada", longs_diario_semanal)
         enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", shorts_perfectos)
@@ -423,7 +427,7 @@ def analizar_mercado():
         print(f"Error en el escaneo general: {e}")
 
 # ==========================================
-# 8. BUCLE PRINCIPAL
+# 8. BUCLE PRINCIPAL (CADA 1 HORA)
 # ==========================================
 if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
@@ -433,5 +437,3 @@ if __name__ == "__main__":
     while True:
         time.sleep(3600)
         analizar_mercado()
-
-       
