@@ -35,11 +35,9 @@ def enviar_telegram(mensaje):
 # ==========================================
 # 📊 CONFIGURACIÓN DE BINANCE Y ESTRATEGIA
 # ==========================================
-exchange = ccxt.binance({
+# En lugar de ccxt.binance():
+exchange = ccxt.bingx({
     'enableRateLimit': True,
-    'options': {
-        'defaultType': 'spot',
-    }
 })
 
 def obtener_datos(symbol, timeframe, limit=100):
