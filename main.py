@@ -9,8 +9,7 @@ from datetime import datetime
 # 1. CONFIGURACIÓN DE TELEGRAM
 # ==========================================
 TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
-TELEGRAM_CHAT_ID = "1473411725"
-
+CHAT_ID = "1473411725"
 
 def enviar_telegram(mensaje):
     try:
@@ -37,16 +36,13 @@ exchange = ccxt.bingx({
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
-        # ----------------------------------------------------
-        # CASO ESPECIAL: SEMANAL (1W) -> SOLO 1 EMA MACRO
-        # ----------------------------------------------------
+        # SEMANAL (1W) -> SOLO 1 EMA MACRO
         if timeframe == '1w':
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1w', limit=60)
             if not ohlcv or len(ohlcv) < 5:
                 return None
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
-            # EMA Macro (55 o la máxima disponible para monedas nuevas)
             window_ema = min(55, len(df)-1)
             df['ema_macro'] = ta.trend.ema_indicator(df['close'], window=window_ema)
             
@@ -60,9 +56,7 @@ def analizar_par_completo(symbol, timeframe):
                 'atr': precio_act * 0.03
             }
 
-        # ----------------------------------------------------
-        # CASO ESTÁNDAR: 1H, 4H, 1D -> COMPLETO (EMAs 10/20/55 + CIPHER B + ORACLE + ADX + MOM)
-        # ----------------------------------------------------
+        # OTROS TF (1H, 4H, 1D) -> ANÁLISIS COMPLETO
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=80)
         if not ohlcv or len(ohlcv) < 20:
             return None
@@ -83,7 +77,7 @@ def analizar_par_completo(symbol, timeframe):
         # 3. Momentum (ROC)
         df['momentum'] = ta.momentum.roc(df['close'], window=min(10, n_velas-1))
         
-        # 4. Cipher B (WaveTrend WT1 y WT2)
+        # 4. Cipher B (WT1 y WT2)
         ap3 = (df['high'] + df['low'] + df['close']) / 3
         esa = ta.trend.ema_indicator(ap3, window=min(10, n_velas-1))
         d = ta.trend.ema_indicator((ap3 - esa).abs(), window=min(10, n_velas-1))
@@ -157,10 +151,15 @@ def analizar_mercado():
         exchange.load_markets()
         tickers = exchange.fetch_tickers()
         
+        # MONEDAS A IGNORAR (Stablecoins / Fiat)
+        estables_ignoradas = ['USDC', 'USDT', 'BUSD', 'FDUSD', 'EUR', 'DAI', 'TUSD']
+        
         pares_usdt = [
             {'symbol': symbol, 'volume': ticker['quoteVolume']}
             for symbol, ticker in tickers.items()
-            if symbol.endswith('/USDT') and ticker.get('quoteVolume') is not None
+            if symbol.endswith('/USDT') 
+            and ticker.get('quoteVolume') is not None
+            and symbol.split('/')[0] not in estables_ignoradas
         ]
         
         pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
@@ -214,7 +213,6 @@ def analizar_mercado():
                 precio_act = h1['precio']
                 atr_act = h1['atr']
 
-                # Sniper Long
                 if estados['1d'] == "🟢" and estados['1w'] == "🟢" and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 BUY")):
                     sl = precio_act - (1.5 * atr_act)
                     tp = precio_act + (2.5 * atr_act)
@@ -223,7 +221,6 @@ def analizar_mercado():
                         'precio': precio_act, 'sl': sl, 'tp': tp,
                         'oracle': h1['oracle_estado']
                     })
-                # Sniper Short
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴" and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 SELL")):
                     sl = precio_act + (1.5 * atr_act)
                     tp = precio_act - (2.5 * atr_act)
@@ -276,5 +273,3 @@ if __name__ == "__main__":
         print("Esperando 1 hora para el próximo ciclo...")
         time.sleep(3600)
         analizar_mercado()
-    
-    
