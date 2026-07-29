@@ -116,12 +116,17 @@ def analizar_mercado():
 # ===================================================
 # BUCLE DE EJECUCIÓN (CADA 15 MINUTOS)
 # ===================================================
-if __name__ == "__main__":
-    enviar_telegram("🤖 *Bot iniciado exitosamente en Railway*")
+def loop_principal():
     while True:
         try:
+            print("🔎 Iniciando escaneo completo...")
             analizar_mercado()
         except Exception as e:
-            print(f"Error en el ciclo de escaneo: {e}")
+            print(f"Error durante el escaneo: {e}")
         
-        time.sleep(300)
+        print("Esperando 15 minutos para el próximo escaneo...")
+        time.sleep(900)
+
+if __name__ == "__main__":
+    enviar_telegram("🤖 *Bot iniciado exitosamente en Railway*")
+    loop_principal()
