@@ -3,156 +3,159 @@ import requests
 import ccxt
 import pandas as pd
 import ta
-import os
-import http.server
-import socketserver
-import threading
-import os
-
-import os
-import socket
-import socketserver
-import http.server
-import threading
-
-def iniciar_servidor_dummy():
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, format, *args):
-            return  # Silencia los logs de peticiones HTTP para mantener la consola limpia
-
-    port = int(os.environ.get("PORT", 8080))
-    
-    # Permitir la reutilización inmediata del puerto
-    socketserver.TCPServer.allow_reuse_address = True
-    
-    try:
-        with socketserver.TCPServer(("", port), Handler) as httpd:
-            print(f"🌐 Servidor fantasma activo en el puerto {port}")
-            httpd.serve_forever()
-    except Exception as e:
-        print(f"Aviso del servidor web: {e}")
-
-# Iniciar en hilo secundario
-threading.Thread(target=iniciar_servidor_dummy, daemon=True).start()
-
-def iniciar_servidor_dummy():
-    port = int(os.environ.get("PORT", 10000))
-    handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("", port), handler) as httpd:
-        httpd.serve_forever()
-
-# Inicia el servidor web en segundo plano para engañar al Web Service de Render
-threading.Thread(target=iniciar_servidor_dummy, daemon=True).start()
 
 # ==========================================
-# ⚙️ CONFIGURACIÓN DE TELEGRAM
+# 1. CONFIGURACIÓN DE TELEGRAM
 # ==========================================
 TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
-TELEGRAM_CHAT_ID = "1473411725"
+CHAT_ID = "1473411725"
 
 def enviar_telegram(mensaje):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
     try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        data = {
+            "chat_id": CHAT_ID,
+            "text": mensaje,
+            "parse_mode": "Markdown"
+        }
         requests.post(url, data=data)
     except Exception as e:
         print(f"Error enviando mensaje a Telegram: {e}")
 
 # ==========================================
-# 📊 CONFIGURACIÓN DE BINANCE Y ESTRATEGIA
+# 2. INICIALIZAR EXCHANGE (BingX)
 # ==========================================
-# En lugar de ccxt.binance():
 exchange = ccxt.bingx({
     'enableRateLimit': True,
 })
 
-def obtener_datos(symbol, timeframe, limit=100):
-    # Indicadores con la librería 'ta'
-        df['ema50'] = ta.trend.ema_indicator(df['close'], window=50)
-        df['ema200'] = ta.trend.ema_indicator(df['close'], window=200)
-        df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-        df['adx'] = ta.trend.adx(df['close'], df['high'], df['low'], window=14)
-        df['macd_hist'] = ta.trend.macd_diff(df['close'])
-        df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+# ==========================================
+# 3. DETERMINACIÓN DE TENDENCIA POR TEMPORALIDAD
+# ==========================================
+def obtener_tendencia(symbol, timeframe):
+    """Devuelve True (Alcista 🟢) o False (Bajista 🔴) basado en la EMA 50"""
+    try:
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=100)
+        if not ohlcv or len(ohlcv) < 30:
+            return None
+        
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['ema50'] = ta.trend.ema_indicator(df['close'], window=min(50, len(df)-1))
+        
+        precio_actual = df['close'].iloc[-1]
+        ema_actual = df['ema50'].iloc[-1]
+        
+        return precio_actual > ema_actual
+    except Exception:
+        return None
 
+# ==========================================
+# 4. RASTREO Y CLASIFICACIÓN DE PARES
+# ==========================================
 def analizar_mercado():
-    print("🔎 Iniciando escaneo completo...")
+    print("🔎 Rastreando todo el mercado de criptomonedas (USDT)...")
     
     try:
-        markets = exchange.fetch_tickers()
-        usdt_pairs = [symbol for symbol in markets.keys() if symbol.endswith('/USDT') and 'UP/' not in symbol and 'DOWN/' not in symbol]
+        exchange.load_markets()
+        todos_los_pares = [symbol for symbol in exchange.symbols if symbol.endswith('/USDT')]
+        
+        print(f"🚀 Escaneando {len(todos_los_pares)} pares en 4 temporalidades...")
+        
+        longs_perfectos = []       # 1H, 4H, 1D, 1S (Todos Verde)
+        longs_diario_semanal = []  # 1D y 1S (Verde)
+        shorts_perfectos = []      # 1H, 4H, 1D, 1S (Todos Rojo)
+        shorts_diario_semanal = [] # 1D y 1S (Rojo)
+        
+        temporalidades = ['1h', '4h', '1d', '1w']
+
+        for par in todos_los_pares:
+            estados = {}
+            es_valido = True
+            
+            for tf in temporalidades:
+                tendencia = obtener_tendencia(par, tf)
+                if tendencia is None:
+                    es_valido = False
+                    break
+                
+                estados[tf] = "🟢" if tendencia else "🔴"
+            
+            if es_valido:
+                simbolo_limpio = par.split('/')[0]
+                datos_par = {
+                    'symbol': simbolo_limpio,
+                    '1h': estados['1h'], '4h': estados['4h'], 
+                    '1d': estados['1d'], '1w': estados['1w']
+                }
+                
+                # 1. PERFECCIÓN ALCISTA (4 VERDES)
+                if all(val == "🟢" for val in estados.values()):
+                    longs_perfectos.append(datos_par)
+                
+                # 2. DIARIO Y SEMANAL ALCISTAS (1D 🟢 + 1S 🟢)
+                elif estados['1d'] == "🟢" and estados['1w'] == "🟢":
+                    longs_diario_semanal.append(datos_par)
+
+                # 3. PERFECCIÓN BAJISTA (4 ROJOS)
+                if all(val == "🔴" for val in estados.values()):
+                    shorts_perfectos.append(datos_par)
+                
+                # 4. DIARIO Y SEMANAL BAJISTAS (1D 🔴 + 1S 🔴)
+                elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
+                    shorts_diario_semanal.append(datos_par)
+
+            time.sleep(0.05)
+
+        # Función auxiliar para enviar listas a Telegram
+        def enviar_lista_telegram(titulo, descripcion, lista):
+            if not lista:
+                return
+            mensaje = f"{titulo}\n_{descripcion}_\n\n"
+            for i, res in enumerate(lista[:20], 1):
+                mensaje += f"*{i}. {res['symbol']}*\n"
+                mensaje += f"1H {res['1h']} | 4H {res['4h']} | 1D {res['1d']} | 1S {res['1w']}\n\n"
+            enviar_telegram(mensaje)
+            time.sleep(1)
+
+        # --- ENVIAR LOS 4 REPORTES A TELEGRAM ---
+        enviar_lista_telegram(
+            "🟢 *TOP 20 PERFECCIÓN ALCISTA*",
+            "Criptos con 1H, 4H, 1D y 1S en Verde",
+            longs_perfectos
+        )
+
+        enviar_lista_telegram(
+            "📈 *TOP 20 TENDENCIA ALCISTA (1D + 1S)*",
+            "Criptos con Gráfico Diario y Semanal en Verde",
+            longs_diario_semanal
+        )
+
+        enviar_lista_telegram(
+            "🔴 *TOP 20 PERFECCIÓN BAJISTA*",
+            "Criptos con 1H, 4H, 1D y 1S en Rojo",
+            shorts_perfectos
+        )
+
+        enviar_lista_telegram(
+            "📉 *TOP 20 TENDENCIA BAJISTA (1D + 1S)*",
+            "Criptos con Gráfico Diario y Semanal en Rojo",
+            shorts_diario_semanal
+        )
+
     except Exception as e:
-        print(f"Error obteniendo pares: {e}")
-        return
+        print(f"Error en el escaneo general: {e}")
 
-    resultados_alcistas = []
+# ==========================================
+# 5. BUCLE DE EJECUCIÓN 24/7
+# ==========================================
+if __name__ == "__main__":
+    enviar_telegram("🤖 *Bot iniciado: Rastreando MarketCap (4 Filtros de Tendencia)*")
     
-    for symbol in usdt_pairs[:50]:  # Analiza los principales 50 pares
-        try:
-            df_15m = obtener_datos(symbol, '15m')
-            df_1h = obtener_datos(symbol, '1h')
-            df_4h = obtener_datos(symbol, '4h')
-            
-            if df_15m is None or df_1h is None or df_4h is None:
-                continue
-                
-            p_15m = df_15m.iloc[-1]
-            p_1h = df_1h.iloc[-1]
-            p_4h = df_4h.iloc[-1]
-            
-            # Filtro Trend Following Alcista
-            cond_4h = p_4h['close'] > p_4h['ema200']
-            cond_1h = p_1h['close'] > p_1h['ema50']
-            cond_15m = (p_15m['close'] > p_15m['open']) and (p_15m['rsi'] > 50) and (p_15m['adx'] > 20) and (p_15m['macd_hist'] > 0)
-            
-            if cond_4h and cond_1h and cond_15m:
-                precio = p_15m['close']
-                atr = p_15m['atr']
-                tp = precio + (1.5 * atr)
-                sl = precio - (1.0 * atr)
-                
-                ticker_limpio = symbol.replace('/USDT', '')
-                resultados_alcistas.append({
-                    'symbol': ticker_limpio,
-                    'precio': precio,
-                    'tp': tp,
-                    'sl': sl,
-                    'rsi': p_15m['rsi'],
-                    'adx': p_15m['adx']
-                })
-        except Exception as e:
-            continue
-
-    # Construir reporte
-    if resultados_alcistas:
-        msj = "🚀 **ALERTAS ALCISTAS ENCONTRADAS** 🚀\n\n"
-        for res in resultados_alcistas:
-            msj += f"🔹 **#{res['symbol']}**\n"
-            msj += f"  • Precio: `{res['precio']:.4f}`\n"
-            msj += f"  • Target (TP): `{res['tp']:.4f}`\n"
-            msj += f"  • Stop (SL): `{res['sl']:.4f}`\n"
-            msj += f"  • RSI: `{res['rsi']:.1f}` | ADX: `{res['adx']:.1f}`\n\n"
-        enviar_telegram(msj)
-    else:
-        print("No se encontraron oportunidades en este escaneo.")
-
-# ==========================================
-# 🔄 BUCLE DE EJECUCIÓN (CADA 15 MINUTOS)
-# ==========================================
-# ===================================================
-# BUCLE DE EJECUCIÓN (CADA 15 MINUTOS)
-# ===================================================
-def loop_principal():
     while True:
         try:
-            print("🔎 Iniciando escaneo completo...")
             analizar_mercado()
         except Exception as e:
-            print(f"Error durante el escaneo: {e}")
-        
-        print("Esperando 15 minutos para el próximo escaneo...")
+            print(f"Error en el ciclo principal: {e}")
+            
+        print("Escaneo completado. Esperando 15 minutos para el próximo ciclo...")
         time.sleep(900)
-
-if __name__ == "__main__":
-    enviar_telegram("🤖 *Bot iniciado exitosamente en Railway*")
-    loop_principal()
