@@ -6,12 +6,19 @@ import ta
 from datetime import datetime
 
 # ==========================================
-# 1. CONFIGURACIÓN DE TELEGRAM
+# 1. CONFIGURACIÓN DE TELEGRAM (CON SEGURIDAD)
 # ==========================================
 TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
 CHAT_ID = "1473411725"
 
 def enviar_telegram(mensaje):
+    if not mensaje or not mensaje.strip():
+        return
+    
+    # 1. Recortar si excede el límite de Telegram para que no se corte feo ni falle
+    if len(mensaje) > 3500:
+        mensaje = mensaje[:3500] + "\n\n⚠️ _(Mensaje recortado por límite de tamaño)_"
+
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         data = {
@@ -19,12 +26,13 @@ def enviar_telegram(mensaje):
             "text": mensaje,
             "parse_mode": "Markdown"
         }
-        requests.post(url, data=data, timeout=5)
+        # Timeout extendido a 10s para evitar reintentos duplicados por lentitud de red
+        requests.post(url, data=data, timeout=10)
     except Exception as e:
         print(f"Error enviando mensaje a Telegram: {e}")
 
 # ==========================================
-# 2. INICIALIZAR EXCHANGE CON TIMEOUT
+# 2. INICIALIZAR EXCHANGE
 # ==========================================
 exchange = ccxt.bingx({
     'enableRateLimit': True,
@@ -233,20 +241,23 @@ def analizar_mercado():
             if count % 30 == 0:
                 print(f"⏳ Progreso: {count}/{len(pares_filtrados)} pares procesados...")
 
+        # Envío controlado paso a paso
         def enviar_lista_telegram(titulo, descripcion, lista):
             if not lista:
                 return
             mensaje = f"{titulo}\n_{descripcion} | Hora: {hora_escaneo}_\n\n"
-            for i, res in enumerate(lista[:20], 1):
+            # Limitamos a máximo 15 por lista para evitar exceder el tamaño de Telegram
+            for i, res in enumerate(lista[:15], 1):
                 mensaje += f"*{i}. {res['symbol']}*\n"
                 mensaje += f"1H {res['1h']} | 4H {res['4h']} | 1D {res['1d']} | 1S {res['1w']}\n\n"
+            
             enviar_telegram(mensaje)
-            time.sleep(1)
+            time.sleep(1.5) # Pausa segura entre envíos
 
-        enviar_lista_telegram("🟢 *TOP 20 PERFECCIÓN ALCISTA*", "EMA 10/20/55 + Cipher B + Oracle + ADX", longs_perfectos)
-        enviar_lista_telegram("📈 *TOP 20 TENDENCIA ALCISTA (1D + 1S)*", "Tendencia Mayor Alcista Confirmada", longs_diario_semanal)
-        enviar_lista_telegram("🔴 *TOP 20 PERFECCIÓN BAJISTA*", "EMA 10/20/55 + Cipher B + Oracle + ADX", shorts_perfectos)
-        enviar_lista_telegram("📉 *TOP 20 TENDENCIA BAJISTA (1D + 1S)*", "Tendencia Mayor Bajista Confirmada", shorts_diario_semanal)
+        enviar_lista_telegram("🟢 *TOP PERFECCIÓN ALCISTA*", "EMA 10/20/55 + Cipher B + Oracle + ADX", longs_perfectos)
+        enviar_lista_telegram("📈 *TOP TENDENCIA ALCISTA (1D + 1S)*", "Tendencia Mayor Alcista Confirmada", longs_diario_semanal)
+        enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA 10/20/55 + Cipher B + Oracle + ADX", shorts_perfectos)
+        enviar_lista_telegram("📉 *TOP TENDENCIA BAJISTA (1D + 1S)*", "Tendencia Mayor Bajista Confirmada", shorts_diario_semanal)
 
         if entradas_sniper:
             msj_sniper = f"🎯 *OPORTUNIDADES SNIPER (CONFIRMACIÓN ORACLE)* 🎯\n_Gatillo en 1H | Hora: {hora_escaneo}_\n\n"
@@ -266,7 +277,6 @@ def analizar_mercado():
 # 5. BUCLE DE EJECUCIÓN
 # ==========================================
 if __name__ == "__main__":
-    enviar_telegram("🤖 *Bot Sistema Sniper + Oracle Activo*")
     analizar_mercado()
     
     while True:
