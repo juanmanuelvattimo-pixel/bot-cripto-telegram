@@ -4,6 +4,7 @@ import ccxt
 import pandas as pd
 import ta
 import threading
+import os
 
 # ==========================================
 # 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO MULTI-MENSAJE
@@ -272,16 +273,23 @@ def escuchar_mensajes_telegram():
         time.sleep(1)
 
 # ==========================================
-# 7. ESCANEO Y CLASIFICACIÓN GENERAL (BLINDADO)
+# 7. ESCANEO Y CLASIFICACIÓN GENERAL (BLOQUEO POR ARCHIVO)
 # ==========================================
-escaneo_en_curso = False
+ARCHIVO_BLOQUEO = "ultimo_escaneo.txt"
 
 def analizar_mercado():
-    global escaneo_en_curso
-    if escaneo_en_curso:
-        return
-    
-    escaneo_en_curso = True
+    if os.path.exists(ARCHIVO_BLOQUEO):
+        tiempo_archivo = os.path.getmtime(ARCHIVO_BLOQUEO)
+        if (time.time() - tiempo_archivo) < 1800:  # 30 minutos de protección
+            print("⏳ Otro proceso ya escaneó recientemente. Saltando este ciclo.")
+            return
+
+    try:
+        with open(ARCHIVO_BLOQUEO, "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
+
     print("🔎 Escaneando mercado...")
     
     try:
@@ -431,8 +439,6 @@ def analizar_mercado():
 
     except Exception as e:
         print(f"Error en el escaneo general: {e}")
-    finally:
-        escaneo_en_curso = False
 
 # ==========================================
 # 8. BUCLE PRINCIPAL
