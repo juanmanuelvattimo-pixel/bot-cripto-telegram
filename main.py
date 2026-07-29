@@ -4,23 +4,51 @@ import ccxt
 import pandas as pd
 import ta
 import threading
+import os
+import sys
 
 # ==========================================
-# 1. CONFIGURACIÓN DE TELEGRAM Y CONTROL ANTI-REPETICIÓN INSTANTÁNEA
+# 0. CONTROL DE INSTANCIA ÚNICA
+# ==========================================
+LOCK_FILE = "bot_trading.lock"
+
+if os.path.exists(LOCK_FILE):
+    print("❌ ¡ALERTA! Ya hay otra instancia de este bot ejecutándose.")
+    sys.exit()
+
+with open(LOCK_FILE, "w") as f:
+    f.write(str(os.getpid()))
+
+def limpiar_candado():
+    if os.path.exists(LOCK_FILE):
+        try:
+            os.remove(LOCK_FILE)
+        except:
+            pass
+
+import atexit
+atexit.register(limpiar_candado)
+
+# ==========================================
+# 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO ANTI-DUPLICADOS GLOBAL
 # ==========================================
 TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
 CHAT_ID = "1473411725"
 
-# Variable global para evitar que se envíe el mismo mensaje 2 veces en el mismo instante
+# Control riguroso de duplicados exactos en ráfaga
 ultimo_mensaje_enviado = ""
+tiempo_ultimo_envio = 0
 
 def enviar_telegram(mensaje):
-    global ultimo_mensaje_enviado
+    global ultimo_mensaje_enviado, tiempo_ultimo_envio
     if not mensaje or not mensaje.strip():
         return
     
-    # Bloqueo: si el mensaje es idéntico al que acaba de salir, se ignora la repetición
-    if mensaje == ultimo_mensaje_enviado:
+    tiempo_actual = time.time()
+    
+    # BLOQUEO ABSOLUTO: Si el mensaje es exactamente igual al anterior 
+    # y han pasado menos de 15 segundos, SE DESCARTA POR COMPLETO.
+    if mensaje == ultimo_mensaje_enviado and (tiempo_actual - tiempo_ultimo_envio) < 15.0:
         return
 
     if len(mensaje) > 3500:
@@ -36,6 +64,7 @@ def enviar_telegram(mensaje):
         res = requests.post(url, data=data, timeout=10)
         if res.status_code == 200:
             ultimo_mensaje_enviado = mensaje
+            tiempo_ultimo_envio = time.time()
     except Exception as e:
         print(f"Error enviando mensaje a Telegram: {e}")
 
@@ -84,26 +113,21 @@ def analizar_par_completo(symbol, timeframe):
         n_velas = len(df)
         precio = df['close'].iloc[-1]
 
-        # 1. EMAs principales
         df['ema10'] = ta.trend.ema_indicator(df['close'], window=min(10, n_velas-1))
         df['ema20'] = ta.trend.ema_indicator(df['close'], window=min(20, n_velas-1))
         df['ema55'] = ta.trend.ema_indicator(df['close'], window=min(55, n_velas-1))
         
-        # 2. RSI & MFI
         df['rsi'] = ta.momentum.rsi(df['close'], window=min(14, n_velas-1))
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=min(14, n_velas-1))
         
-        # 3. Volumen Institucional
         df['vol_ema'] = ta.trend.ema_indicator(df['volume'], window=min(20, n_velas-1))
         volumen_alto = df['volume'].iloc[-1] > df['vol_ema'].iloc[-1]
         
-        # 4. ADX & Direccionalidad
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=min(14, n_velas-1))
         df['adx'] = adx_ind.adx()
         df['plus_di'] = adx_ind.adx_pos()
         df['minus_di'] = adx_ind.adx_neg()
         
-        # 5. Cipher B / WaveTrend
         ap3 = (df['high'] + df['low'] + df['close']) / 3
         esa = ta.trend.ema_indicator(ap3, window=min(10, n_velas-1))
         d = ta.trend.ema_indicator((ap3 - esa).abs(), window=min(10, n_velas-1))
@@ -111,12 +135,10 @@ def analizar_par_completo(symbol, timeframe):
         df['wt1'] = ta.trend.ema_indicator(ci, window=min(21, n_velas-1))
         df['wt2'] = ta.trend.sma_indicator(df['wt1'], window=min(4, len(df['wt1'].dropna())-1))
         
-        # 6. Oracle Ribbon
         df['oracle_fast'] = ta.trend.ema_indicator(df['close'], window=min(8, n_velas-1))
         df['oracle_slow'] = ta.trend.ema_indicator(df['close'], window=min(13, n_velas-1))
         df['oracle_ribbon'] = df['oracle_fast'] > df['oracle_slow']
         
-        # 7. Volatilidad (ATR)
         df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=min(14, n_velas-1))
 
         e10, e20, e55 = df['ema10'].iloc[-1], df['ema20'].iloc[-1], df['ema55'].iloc[-1]
@@ -137,7 +159,6 @@ def analizar_par_completo(symbol, timeframe):
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
-        # Fibonacci
         recent_df = df.tail(30)
         swing_high = recent_df['high'].max()
         swing_low = recent_df['low'].min()
@@ -232,11 +253,11 @@ def analizar_cripto_individual(ticker_raw):
     enviar_telegram(msj)
 
 # ==========================================
-# 6. ESCUCHADOR DE TELEGRAM (CONTROL ANTI-DUPLICADOS)
+# 6. ESCUCHADOR DE TELEGRAM BLINDADO CON OFFSET ESTRICTO
 # ==========================================
 def escuchar_mensajes_telegram():
-    offset = None
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    offset = None
     
     try:
         init_resp = requests.get(url, params={"timeout": 1}, timeout=5).json()
@@ -247,12 +268,12 @@ def escuchar_mensajes_telegram():
 
     while True:
         try:
-            params = {"timeout": 10, "offset": offset}
-            resp = requests.get(url, params=params, timeout=12).json()
+            params = {"timeout": 15, "offset": offset}
+            resp = requests.get(url, params=params, timeout=20).json()
             
             if resp.get("ok"):
                 for result in resp.get("result", []):
-                    offset = result["update_id"] + 1
+                    offset = result["update_id"] + 1  # Borra y confirma el paquete al instante
                     message = result.get("message", {})
                     text = message.get("text", "").strip()
                     
@@ -266,7 +287,7 @@ def escuchar_mensajes_telegram():
                             enviar_telegram("ℹ️ Indica la moneda. Ejemplo: `/analizar BTC` o `/analizar SOL`")
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(1)
 
 # ==========================================
 # 7. ESCANEO Y CLASIFICACIÓN GENERAL
@@ -332,13 +353,11 @@ def analizar_mercado():
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
                     shorts_diario_semanal.append(datos_par)
 
-                # EVALUADOR SNIPER 10X
                 h1 = analisis_tf['1h']
                 precio_act = h1['precio']
                 atr_act = h1['atr']
                 adx_aprobado = h1['adx'] >= 20
 
-                # LONG 10X SNIPER
                 if estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" and adx_aprobado and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA")):
                     sl_tecnico = min(precio_act - (1.2 * atr_act), h1['soporte'] * 0.998)
                     sl_max_10x = precio_act * 0.983
@@ -364,7 +383,6 @@ def analizar_mercado():
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                # SHORT 10X SNIPER
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴" and estados['4h'] == "🔴" and adx_aprobado and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 VENTA")):
                     sl_tecnico = max(precio_act + (1.2 * atr_act), h1['resistencia'] * 1.002)
                     sl_max_10x = precio_act * 1.017
@@ -384,8 +402,8 @@ def analizar_mercado():
                             'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                             'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                            'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
-                            'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
+                            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                            'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                             'oracle': h1['oracle_estado'],
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
@@ -401,7 +419,6 @@ def analizar_mercado():
             enviar_telegram(mensaje)
             time.sleep(1.5)
 
-        # Enviar reportes
         enviar_lista_telegram("🟢 *TOP PERFECCIÓN ALCISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", longs_perfectos)
         enviar_lista_telegram("📈 *TOP TENDENCIA ALCISTA (1D + 1S)*", "Tendencia Mayor Alcista Confirmada", longs_diario_semanal)
         enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", shorts_perfectos)
@@ -427,7 +444,7 @@ def analizar_mercado():
         print(f"Error en el escaneo general: {e}")
 
 # ==========================================
-# 8. BUCLE PRINCIPAL (CADA 1 HORA)
+# 8. BUCLE PRINCIPAL
 # ==========================================
 if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
@@ -435,5 +452,5 @@ if __name__ == "__main__":
     
     analizar_mercado()
     while True:
-        time.sleep(3600)
+        time.sleep(7200)
         analizar_mercado()
