@@ -2,7 +2,7 @@ import time
 import requests
 import ccxt
 import pandas as pd
-import pandas_ta as ta
+import ta
 import os
 os.environ['HTTP_PROXY'] = 'http://proxy.server:3128'
 os.environ['HTTPS_PROXY'] = 'http://proxy.server:3128'
@@ -32,34 +32,13 @@ exchange = ccxt.binance({
 })
 
 def obtener_datos(symbol, timeframe, limit=100):
-    try:
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        
-        # Indicadores
-        df['ema50'] = ta.ema(df['close'], length=50)
-        df['ema200'] = ta.ema(df['close'], length=200)
-        
-        rsi = ta.rsi(df['close'], length=14)
-        df['rsi'] = rsi
-        
-        adx_df = ta.adx(df['high'], df['low'], df['close'], length=14)
-        if adx_df is not None and not adx_df.empty:
-            df['adx'] = adx_df.iloc[:, 0]
-        else:
-            df['adx'] = 0
-            
-        macd_df = ta.macd(df['close'])
-        if macd_df is not None and not macd_df.empty:
-            df['macd_hist'] = macd_df.iloc[:, 1]
-        else:
-            df['macd_hist'] = 0
-            
-        df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
-        
-        return df
-    except Exception as e:
-        return None
+    # Indicadores con la librería 'ta'
+        df['ema50'] = ta.trend.ema_indicator(df['close'], window=50)
+        df['ema200'] = ta.trend.ema_indicator(df['close'], window=200)
+        df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+        df['adx'] = ta.trend.adx(df['close'], df['high'], df['low'], window=14)
+        df['macd_hist'] = ta.trend.macd_diff(df['close'])
+        df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
 
 def analizar_mercado():
     print("🔎 Iniciando escaneo completo...")
