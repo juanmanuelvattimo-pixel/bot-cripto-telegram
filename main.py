@@ -4,8 +4,19 @@ import ccxt
 import pandas as pd
 import ta
 import os
-os.environ['HTTP_PROXY'] = 'http://proxy.server:3128'
-os.environ['HTTPS_PROXY'] = 'http://proxy.server:3128'
+import http.server
+import socketserver
+import threading
+import os
+
+def iniciar_servidor_dummy():
+    port = int(os.environ.get("PORT", 10000))
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", port), handler) as httpd:
+        httpd.serve_forever()
+
+# Inicia el servidor web en segundo plano para engañar al Web Service de Render
+threading.Thread(target=iniciar_servidor_dummy, daemon=True).start()
 
 # ==========================================
 # ⚙️ CONFIGURACIÓN DE TELEGRAM
