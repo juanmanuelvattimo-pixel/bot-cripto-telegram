@@ -9,22 +9,30 @@ import socketserver
 import threading
 import os
 
+import os
+import socket
+import socketserver
+import http.server
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class DummyHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot OK")
 
 def iniciar_servidor_dummy():
-    import os
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    server.serve_forever()
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return  # Silencia los logs de peticiones HTTP para mantener la consola limpia
 
-# Iniciar servidor web fantasma en un hilo secundario
+    port = int(os.environ.get("PORT", 8080))
+    
+    # Permitir la reutilización inmediata del puerto
+    socketserver.TCPServer.allow_reuse_address = True
+    
+    try:
+        with socketserver.TCPServer(("", port), Handler) as httpd:
+            print(f"🌐 Servidor fantasma activo en el puerto {port}")
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"Aviso del servidor web: {e}")
+
+# Iniciar en hilo secundario
 threading.Thread(target=iniciar_servidor_dummy, daemon=True).start()
 
 def iniciar_servidor_dummy():
