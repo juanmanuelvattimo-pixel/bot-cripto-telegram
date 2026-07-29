@@ -8,8 +8,9 @@ from datetime import datetime
 # ==========================================
 # 1. CONFIGURACIÓN DE TELEGRAM
 # ==========================================
-TELEGRAM_TOKEN = "TU_TELEGRAM_TOKEN_AQUI"
-CHAT_ID = "TU_CHAT_ID_AQUI"
+TELEGRAM_TOKEN = "8810680096:AAGPSrNFFWpbUHuj0laurGLxuepKIZDexys"
+TELEGRAM_CHAT_ID = "1473411725"
+
 
 def enviar_telegram(mensaje):
     try:
