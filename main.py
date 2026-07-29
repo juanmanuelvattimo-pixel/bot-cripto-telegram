@@ -24,7 +24,7 @@ def enviar_telegram(mensaje):
         print(f"Error enviando mensaje a Telegram: {e}")
 
 # ==========================================
-# 2. INICIALIZAR EXCHANGE
+# 2. INICIALIZAR EXCHANGE CON TIMEOUT
 # ==========================================
 exchange = ccxt.bingx({
     'enableRateLimit': True,
@@ -32,64 +32,90 @@ exchange = ccxt.bingx({
 })
 
 # ==========================================
-# 3. MOTOR COMPLETO: EMAs + CIPHER B + ADX + MOMENTUM + ORACLE + ATR
+# 3. MOTOR DE ANÁLISIS OPTIMIZADO
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
-        limite_velas = 30 if timeframe == '1w' else 80
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limite_velas)
-        if not ohlcv or len(ohlcv) < 55:
+        # ----------------------------------------------------
+        # CASO ESPECIAL: SEMANAL (1W) -> SOLO 1 EMA MACRO
+        # ----------------------------------------------------
+        if timeframe == '1w':
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1w', limit=60)
+            if not ohlcv or len(ohlcv) < 5:
+                return None
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            
+            # EMA Macro (55 o la máxima disponible para monedas nuevas)
+            window_ema = min(55, len(df)-1)
+            df['ema_macro'] = ta.trend.ema_indicator(df['close'], window=window_ema)
+            
+            precio_act = df['close'].iloc[-1]
+            ema_act = df['ema_macro'].iloc[-1]
+            
+            return {
+                'es_alcista': precio_act > ema_act,
+                'es_bajista': precio_act < ema_act,
+                'precio': precio_act,
+                'atr': precio_act * 0.03
+            }
+
+        # ----------------------------------------------------
+        # CASO ESTÁNDAR: 1H, 4H, 1D -> COMPLETO (EMAs 10/20/55 + CIPHER B + ORACLE + ADX + MOM)
+        # ----------------------------------------------------
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=80)
+        if not ohlcv or len(ohlcv) < 20:
             return None
         
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        n_velas = len(df)
         
-        # --- 1. EMAs 10, 20, 55 ---
-        df['ema10'] = ta.trend.ema_indicator(df['close'], window=10)
-        df['ema20'] = ta.trend.ema_indicator(df['close'], window=20)
-        df['ema55'] = ta.trend.ema_indicator(df['close'], window=min(55, len(df)-1))
+        # 1. EMAs 10, 20 y 55
+        df['ema10'] = ta.trend.ema_indicator(df['close'], window=min(10, n_velas-1))
+        df['ema20'] = ta.trend.ema_indicator(df['close'], window=min(20, n_velas-1))
+        df['ema55'] = ta.trend.ema_indicator(df['close'], window=min(55, n_velas-1))
         
-        # --- 2. ADX (Fuerza) ---
-        adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
+        # 2. ADX
+        win_adx = min(14, n_velas-1)
+        adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=win_adx)
         df['adx'] = adx_ind.adx()
         
-        # --- 3. MOMENTUM ---
-        df['momentum'] = ta.momentum.roc(df['close'], window=10)
+        # 3. Momentum (ROC)
+        df['momentum'] = ta.momentum.roc(df['close'], window=min(10, n_velas-1))
         
-        # --- 4. CIPHER B (WaveTrend WT1 y WT2) ---
+        # 4. Cipher B (WaveTrend WT1 y WT2)
         ap3 = (df['high'] + df['low'] + df['close']) / 3
-        esa = ta.trend.ema_indicator(ap3, window=10)
-        d = ta.trend.ema_indicator((ap3 - esa).abs(), window=10)
+        esa = ta.trend.ema_indicator(ap3, window=min(10, n_velas-1))
+        d = ta.trend.ema_indicator((ap3 - esa).abs(), window=min(10, n_velas-1))
         ci = (ap3 - esa) / (0.015 * d)
-        df['wt1'] = ta.trend.ema_indicator(ci, window=21)
-        df['wt2'] = ta.trend.sma_indicator(df['wt1'], window=4)
+        df['wt1'] = ta.trend.ema_indicator(ci, window=min(21, n_velas-1))
+        df['wt2'] = ta.trend.sma_indicator(df['wt1'], window=min(4, len(df['wt1'].dropna())-1))
         
-        # --- 5. ORACLE INDICATOR (Cinta de Tendencia + Señal de Compra/Venta) ---
-        # Basado en la convergencia de medias rápidas/lentas (Oracle Matrix Ribbon)
-        df['oracle_fast'] = ta.trend.ema_indicator(df['close'], window=8)
-        df['oracle_slow'] = ta.trend.ema_indicator(df['close'], window=13)
+        # 5. Oracle (Ribbon 8/13)
+        df['oracle_fast'] = ta.trend.ema_indicator(df['close'], window=min(8, n_velas-1))
+        df['oracle_slow'] = ta.trend.ema_indicator(df['close'], window=min(13, n_velas-1))
         df['oracle_ribbon'] = df['oracle_fast'] > df['oracle_slow']
         
-        # --- 6. ATR (Para SL y TP) ---
-        df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+        # 6. ATR
+        df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=win_adx)
 
-        # Tomar los últimos valores
+        # Extraer valores finales
         precio = df['close'].iloc[-1]
         e10, e20, e55 = df['ema10'].iloc[-1], df['ema20'].iloc[-1], df['ema55'].iloc[-1]
-        wt1, wt2 = df['wt1'].iloc[-1], df['wt2'].iloc[-1]
-        wt1_prev, wt2_prev = df['wt1'].iloc[-2], df['wt2'].iloc[-2]
-        adx = df['adx'].iloc[-1]
-        mom = df['momentum'].iloc[-1]
-        atr = df['atr'].iloc[-1]
+        wt1 = df['wt1'].iloc[-1] if not df['wt1'].empty else 0
+        wt2 = df['wt2'].iloc[-1] if not df['wt2'].empty else 0
+        wt1_prev = df['wt1'].iloc[-2] if len(df['wt1']) > 1 else wt1
+        wt2_prev = df['wt2'].iloc[-2] if len(df['wt2']) > 1 else wt2
+        adx = df['adx'].iloc[-1] if not df['adx'].empty else 0
+        mom = df['momentum'].iloc[-1] if not df['momentum'].empty else 0
+        atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
         
-        # Estado del Oracle
         oracle_actual = df['oracle_ribbon'].iloc[-1]
-        oracle_previo = df['oracle_ribbon'].iloc[-2]
+        oracle_previo = df['oracle_ribbon'].iloc[-2] if len(df['oracle_ribbon']) > 1 else oracle_actual
         
-        # Señal directa de entrada/salida del Oracle
-        oracle_buy = (not oracle_previo) and oracle_actual   # Entrada Compra Oracle
-        oracle_sell = oracle_previo and (not oracle_actual)  # Salida / Entrada Venta Oracle
+        oracle_buy = (not oracle_previo) and oracle_actual
+        oracle_sell = oracle_previo and (not oracle_actual)
 
-        # --- EVALUACIÓN GENERAL DE TENDENCIA ---
+        # Evaluación de señales
         ema_alcista = (precio > e55) and (e10 > e20)
         cipher_alcista = (wt1 > wt2)
         cruce_reciente_alcista = (wt1_prev <= wt2_prev) and (wt1 > wt2)
@@ -98,12 +124,9 @@ def analizar_par_completo(symbol, timeframe):
         cipher_bajista = (wt1 < wt2)
         cruce_reciente_bajista = (wt1_prev >= wt2_prev) and (wt1 < wt2)
 
-        # Condición Ponderada Alcista (Incluye Oracle en Verde)
-        es_alcista = ema_alcista and cipher_alcista and oracle_actual and (mom > 0)
-        # Condición Ponderada Bajista (Incluye Oracle en Rojo)
-        es_bajista = ema_bajista and cipher_bajista and (not oracle_actual) and (mom < 0)
+        es_alcista = ema_alcista and cipher_alcista and oracle_actual and (mom >= 0)
+        es_bajista = ema_bajista and cipher_bajista and (not oracle_actual) and (mom <= 0)
 
-        # Retroceso a zona de valor (cerca de EMA 20 o 55)
         en_zona_pullback = (abs(precio - e20) / precio) < 0.015
 
         return {
@@ -123,11 +146,11 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# 4. RASTREO Y CLASIFICACIÓN
+# 4. ESCANEO Y CLASIFICACIÓN
 # ==========================================
 def analizar_mercado():
     hora_escaneo = datetime.now().strftime("%H:%M UTC")
-    print(f"🔎 Escaneando mercado (EMAs + Cipher B + Oracle + ADX + Momentum) [{hora_escaneo}]...")
+    print(f"🔎 Escaneando mercado (EMAs + Cipher B + Oracle + ADX) [{hora_escaneo}]...")
     
     try:
         exchange.load_markets()
@@ -150,7 +173,7 @@ def analizar_mercado():
         
         temporalidades = ['1h', '4h', '1d', '1w']
 
-        for par in pares_filtrados:
+        for count, par in enumerate(pares_filtrados, 1):
             analisis_tf = {}
             es_valido = True
             
@@ -175,7 +198,6 @@ def analizar_mercado():
                     '1d': estados['1d'], '1w': estados['1w']
                 }
                 
-                # Clasificación de Listas Principales
                 if all(v == "🟢" for v in estados.values()):
                     longs_perfectos.append(datos_par)
                 elif estados['1d'] == "🟢" and estados['1w'] == "🟢":
@@ -186,12 +208,12 @@ def analizar_mercado():
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
                     shorts_diario_semanal.append(datos_par)
 
-                # --- CONDICIÓN SNIPER CON CONFIRMACIÓN DE ORACLE ---
+                # Evaluador Sniper
                 h1 = analisis_tf['1h']
                 precio_act = h1['precio']
                 atr_act = h1['atr']
 
-                # Sniper LONG (Gatillo por Cruce Cipher B o Entrada confirmada por Oracle)
+                # Sniper Long
                 if estados['1d'] == "🟢" and estados['1w'] == "🟢" and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 BUY")):
                     sl = precio_act - (1.5 * atr_act)
                     tp = precio_act + (2.5 * atr_act)
@@ -200,7 +222,7 @@ def analizar_mercado():
                         'precio': precio_act, 'sl': sl, 'tp': tp,
                         'oracle': h1['oracle_estado']
                     })
-                # Sniper SHORT (Gatillo por Venta/Salida de Oracle o Cruce Bajista Cipher B)
+                # Sniper Short
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴" and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 SELL")):
                     sl = precio_act + (1.5 * atr_act)
                     tp = precio_act - (2.5 * atr_act)
@@ -209,6 +231,9 @@ def analizar_mercado():
                         'precio': precio_act, 'sl': sl, 'tp': tp,
                         'oracle': h1['oracle_estado']
                     })
+
+            if count % 30 == 0:
+                print(f"⏳ Progreso: {count}/{len(pares_filtrados)} pares procesados...")
 
         def enviar_lista_telegram(titulo, descripcion, lista):
             if not lista:
@@ -220,13 +245,11 @@ def analizar_mercado():
             enviar_telegram(mensaje)
             time.sleep(1)
 
-        # Enviar Reportes
         enviar_lista_telegram("🟢 *TOP 20 PERFECCIÓN ALCISTA*", "EMA 10/20/55 + Cipher B + Oracle + ADX", longs_perfectos)
         enviar_lista_telegram("📈 *TOP 20 TENDENCIA ALCISTA (1D + 1S)*", "Tendencia Mayor Alcista Confirmada", longs_diario_semanal)
         enviar_lista_telegram("🔴 *TOP 20 PERFECCIÓN BAJISTA*", "EMA 10/20/55 + Cipher B + Oracle + ADX", shorts_perfectos)
         enviar_lista_telegram("📉 *TOP 20 TENDENCIA BAJISTA (1D + 1S)*", "Tendencia Mayor Bajista Confirmada", shorts_diario_semanal)
 
-        # Enviar Bloque Sniper con Confirmación del Oracle
         if entradas_sniper:
             msj_sniper = f"🎯 *OPORTUNIDADES SNIPER (CONFIRMACIÓN ORACLE)* 🎯\n_Gatillo en 1H | Hora: {hora_escaneo}_\n\n"
             for op in entradas_sniper[:5]:
@@ -236,13 +259,13 @@ def analizar_mercado():
                 msj_sniper += f"🛑 *SL:* `{op['sl']:.4f}` | 🎯 *TP:* `{op['tp']:.4f}`\n\n"
             enviar_telegram(msj_sniper)
 
-        print("✅ Escaneo completo con Oracle enviado exitosamente.")
+        print("✅ Escaneo completo finalizado con éxito.")
 
     except Exception as e:
         print(f"Error en el escaneo general: {e}")
 
 # ==========================================
-# 5. BUCLE DE EJECUCIÓN 24/7
+# 5. BUCLE DE EJECUCIÓN
 # ==========================================
 if __name__ == "__main__":
     enviar_telegram("🤖 *Bot Sistema Sniper + Oracle Activo*")
@@ -252,3 +275,5 @@ if __name__ == "__main__":
         print("Esperando 1 hora para el próximo ciclo...")
         time.sleep(3600)
         analizar_mercado()
+    
+    
