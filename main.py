@@ -124,4 +124,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error en el ciclo de escaneo: {e}")
         
-        time.sleep(300)  # Espera 5 minutos ( segundos)
+        time.sleep(300)
