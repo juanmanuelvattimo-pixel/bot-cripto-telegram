@@ -53,22 +53,35 @@ def obtener_tendencia(symbol, timeframe):
 # 4. RASTREO Y CLASIFICACIÓN DE PARES
 # ==========================================
 def analizar_mercado():
-    print("🔎 Rastreando todo el mercado de criptomonedas (USDT)...")
+    print("🔎 Rastreando las principales criptomonedas del mercado (por volumen)...")
     
     try:
         exchange.load_markets()
-        todos_los_pares = [symbol for symbol in exchange.symbols if symbol.endswith('/USDT')]
+        tickers = exchange.fetch_tickers()
         
-        print(f"🚀 Escaneando {len(todos_los_pares)} pares en 4 temporalidades...")
+        # Filtrar solo pares spot USDT que tengan volumen activo
+        pares_usdt = []
+        for symbol, ticker in tickers.items():
+            if symbol.endswith('/USDT') and ticker.get('quoteVolume') is not None:
+                pares_usdt.append({
+                    'symbol': symbol,
+                    'volume': ticker['quoteVolume']
+                })
         
-        longs_perfectos = []       # 1H, 4H, 1D, 1S (Todos Verde)
-        longs_diario_semanal = []  # 1D y 1S (Verde)
-        shorts_perfectos = []      # 1H, 4H, 1D, 1S (Todos Rojo)
-        shorts_diario_semanal = [] # 1D y 1S (Rojo)
+        # Ordenar por volumen y tomar las 300 mas relevantes del mercado
+        pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
+        pares_filtrados = [item['symbol'] for item in pares_usdt[:300]]
+        
+        print(f"🚀 Escaneando {len(pares_filtrados)} pares principales en 4 temporalidades...")
+        
+        longs_perfectos = []
+        longs_diario_semanal = []
+        shorts_perfectos = []
+        shorts_diario_semanal = []
         
         temporalidades = ['1h', '4h', '1d', '1w']
 
-        for par in todos_los_pares:
+        for par in pares_filtrados:
             estados = {}
             es_valido = True
             
@@ -88,25 +101,18 @@ def analizar_mercado():
                     '1d': estados['1d'], '1w': estados['1w']
                 }
                 
-                # 1. PERFECCIÓN ALCISTA (4 VERDES)
                 if all(val == "🟢" for val in estados.values()):
                     longs_perfectos.append(datos_par)
-                
-                # 2. DIARIO Y SEMANAL ALCISTAS (1D 🟢 + 1S 🟢)
                 elif estados['1d'] == "🟢" and estados['1w'] == "🟢":
                     longs_diario_semanal.append(datos_par)
 
-                # 3. PERFECCIÓN BAJISTA (4 ROJOS)
                 if all(val == "🔴" for val in estados.values()):
                     shorts_perfectos.append(datos_par)
-                
-                # 4. DIARIO Y SEMANAL BAJISTAS (1D 🔴 + 1S 🔴)
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
                     shorts_diario_semanal.append(datos_par)
 
-            time.sleep(0.05)
+            time.sleep(0.01)  # Pausa super rápida sin saturar
 
-        # Función auxiliar para enviar listas a Telegram
         def enviar_lista_telegram(titulo, descripcion, lista):
             if not lista:
                 return
@@ -117,30 +123,10 @@ def analizar_mercado():
             enviar_telegram(mensaje)
             time.sleep(1)
 
-        # --- ENVIAR LOS 4 REPORTES A TELEGRAM ---
-        enviar_lista_telegram(
-            "🟢 *TOP 20 PERFECCIÓN ALCISTA*",
-            "Criptos con 1H, 4H, 1D y 1S en Verde",
-            longs_perfectos
-        )
-
-        enviar_lista_telegram(
-            "📈 *TOP 20 TENDENCIA ALCISTA (1D + 1S)*",
-            "Criptos con Gráfico Diario y Semanal en Verde",
-            longs_diario_semanal
-        )
-
-        enviar_lista_telegram(
-            "🔴 *TOP 20 PERFECCIÓN BAJISTA*",
-            "Criptos con 1H, 4H, 1D y 1S en Rojo",
-            shorts_perfectos
-        )
-
-        enviar_lista_telegram(
-            "📉 *TOP 20 TENDENCIA BAJISTA (1D + 1S)*",
-            "Criptos con Gráfico Diario y Semanal en Rojo",
-            shorts_diario_semanal
-        )
+        enviar_lista_telegram("🟢 *TOP 20 PERFECCIÓN ALCISTA*", "Criptos con 1H, 4H, 1D y 1S en Verde", longs_perfectos)
+        enviar_lista_telegram("📈 *TOP 20 TENDENCIA ALCISTA (1D + 1S)*", "Criptos con Gráfico Diario y Semanal en Verde", longs_diario_semanal)
+        enviar_lista_telegram("🔴 *TOP 20 PERFECCIÓN BAJISTA*", "Criptos con 1H, 4H, 1D y 1S en Rojo", shorts_perfectos)
+        enviar_lista_telegram("📉 *TOP 20 TENDENCIA BAJISTA (1D + 1S)*", "Criptos con Gráfico Diario y Semanal en Rojo", shorts_diario_semanal)
 
     except Exception as e:
         print(f"Error en el escaneo general: {e}")
