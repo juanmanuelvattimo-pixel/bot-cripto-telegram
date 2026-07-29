@@ -316,32 +316,37 @@ def analizar_mercado():
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
                     shorts_diario_semanal.append(datos_par)
 
-                # EVALUADOR SNIPER 10X (CON FILTRO DE VOLUMEN Y R:R)
+               # ==========================================
+                # EVALUADOR SNIPER 10X (TPs ADAPTATIVOS POR ATR + ESTRUCTURA)
+                # ==========================================
                 h1 = analisis_tf['1h']
-                h4 = analisis_tf['4h']
                 precio_act = h1['precio']
                 atr_act = h1['atr']
-
-                # REQUISITO ADICIONAL: ADX de 1H con fuerza (>= 20) y volumen suficiente
                 adx_aprobado = h1['adx'] >= 20
 
                 # LONG 10X SNIPER
                 if estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" and adx_aprobado and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA")):
+                    # SL Técnico adaptado
                     sl_tecnico = min(precio_act - (1.2 * atr_act), h1['soporte'] * 0.998)
                     sl_max_10x = precio_act * 0.983
                     sl_final = max(sl_tecnico, sl_max_10x)
                     pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
                     
-                    fibo = h1['fibo_long']
-                    tp1 = max(fibo['tp1'], precio_act * 1.015)
-                    tp2 = max(fibo['tp2'], precio_act * 1.030)
-                    tp3 = max(fibo['tp3'], precio_act * 1.050)
+                    # Distancia de riesgo base
+                    distancia_sl = precio_act - sl_final
 
-                    # Validar Ratio Riesgo Beneficio (Mínimo 1.3 al TP1)
-                    riesgo = precio_act - sl_final
-                    beneficio = tp1 - precio_act
-                    
-                    if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+                    # TPs EQUILIBRADOS:
+                    # TP1: Mínimo 1.5x el SL o 1.5x ATR (Equilibrado para no quedar pegado)
+                    tp1 = precio_act + max(distancia_sl * 1.5, atr_act * 1.5)
+                    # TP2: Nivel estructural de resistencia cercana (o 2.5x ATR si la resistencia está muy lejos)
+                    tp2 = min(h1['resistencia'], precio_act + (atr_act * 2.5))
+                    if tp2 <= tp1: tp2 = tp1 + (atr_act * 1.0) # Asegurar escalonamiento
+                    # TP3: Proyección runner (3.5x ATR)
+                    tp3 = precio_act + (atr_act * 3.5)
+
+                    # Validar Ratio Riesgo Beneficio (Mínimo 1:1.5 al TP1)
+                    beneficio_tp1 = tp1 - precio_act
+                    if distancia_sl > 0 and (beneficio_tp1 / distancia_sl) >= 1.5:
                         entradas_sniper.append({
                             'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -349,26 +354,29 @@ def analizar_mercado():
                             'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                             'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                             'oracle': h1['oracle_estado'],
-                            'rr': f"1:{(beneficio/riesgo):.1f}"
+                            'rr': f"1:{(beneficio_tp1/distancia_sl):.1f}"
                         })
 
                 # SHORT 10X SNIPER
                 elif estados['1d'] == "🔴" and estados['1w'] == "🔴" and estados['4h'] == "🔴" and adx_aprobado and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 VENTA")):
+                    # SL Técnico adaptado
                     sl_tecnico = max(precio_act + (1.2 * atr_act), h1['resistencia'] * 1.002)
                     sl_max_10x = precio_act * 1.017
                     sl_final = min(sl_tecnico, sl_max_10x)
                     pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
                     
-                    fibo = h1['fibo_short']
-                    tp1 = min(fibo['tp1'], precio_act * 0.985)
-                    tp2 = min(fibo['tp2'], precio_act * 0.970)
-                    tp3 = min(fibo['tp3'], precio_act * 0.950)
+                    # Distancia de riesgo base
+                    distancia_sl = sl_final - precio_act
+
+                    # TPs EQUILIBRADOS:
+                    tp1 = precio_act - max(distancia_sl * 1.5, atr_act * 1.5)
+                    tp2 = max(h1['soporte'], precio_act - (atr_act * 2.5))
+                    if tp2 >= tp1: tp2 = tp1 - (atr_act * 1.0) # Asegurar escalonamiento
+                    tp3 = precio_act - (atr_act * 3.5)
 
                     # Validar Ratio Riesgo Beneficio
-                    riesgo = sl_final - precio_act
-                    beneficio = precio_act - tp1
-
-                    if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+                    beneficio_tp1 = precio_act - tp1
+                    if distancia_sl > 0 and (beneficio_tp1 / distancia_sl) >= 1.5:
                         entradas_sniper.append({
                             'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -376,7 +384,7 @@ def analizar_mercado():
                             'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
                             'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
                             'oracle': h1['oracle_estado'],
-                            'rr': f"1:{(beneficio/riesgo):.1f}"
+                            'rr': f"1:{(beneficio_tp1/distancia_sl):.1f}"
                         })
 
         def enviar_lista_telegram(titulo, descripcion, lista):
