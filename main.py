@@ -197,8 +197,27 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# 5. CONSULTA INDIVIDUAL Y EVALUACIÓN DE TRADES (/analizar y /trade)
+# 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
+def obtener_pares_top():
+    try:
+        exchange.load_markets()
+        tickers = exchange.fetch_tickers()
+        estables_ignoradas = ['USDC', 'USDT', 'BUSD', 'FDUSD', 'EUR', 'DAI', 'TUSD']
+        
+        pares_usdt = [
+            {'symbol': symbol, 'volume': ticker['quoteVolume']}
+            for symbol, ticker in tickers.items()
+            if symbol.endswith('/USDT') 
+            and ticker.get('quoteVolume') is not None
+            and symbol.split('/')[0] not in estables_ignoradas
+        ]
+        
+        pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
+        return [item['symbol'] for item in pares_usdt[:150]]
+    except Exception:
+        return []
+
 def analizar_cripto_individual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     
@@ -268,7 +287,6 @@ def evaluar_trade_manual(ticker_raw):
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
-    # Evaluación Sniper 10X Long
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
         adx_aprobado and rsi_long_valido and
@@ -276,7 +294,6 @@ def evaluar_trade_manual(ticker_raw):
         h1['cierra_arriba_ema10']
     )
 
-    # Evaluación Sniper 10X Short
     gatillo_short_10x = (
         d1['es_bajista'] and h4['es_bajista'] and
         adx_aprobado and rsi_short_valido and
@@ -284,7 +301,6 @@ def evaluar_trade_manual(ticker_raw):
         h1['cierra_abajo_ema10']
     )
 
-    # Evaluación Sniper Spot
     h4_rsi_valido = h4['rsi'] < 70
     h4_adx_valido = h4['adx'] >= 26
     gatillo_spot = (
@@ -296,7 +312,6 @@ def evaluar_trade_manual(ticker_raw):
 
     msj = f"🎯 *EVALUACIÓN MANUAL DE TRADE: ${simbolo_limpio}*\n\n"
 
-    # Resultados 10X Long
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.5 * atr_act)
         sl_max_10x = precio_act * 0.965
@@ -328,7 +343,6 @@ def evaluar_trade_manual(ticker_raw):
         if not h1['cierra_arriba_ema10']: msj += "  • *Falla:* El precio cierra por debajo de la EMA 10 en 1H.\n"
         msj += "\n"
 
-    # Resultados 10X Short
     if gatillo_short_10x:
         sl_tecnico = h1['resistencia'] + (1.5 * atr_act)
         sl_max_10x = precio_act * 1.035
@@ -360,7 +374,6 @@ def evaluar_trade_manual(ticker_raw):
         if not h1['cierra_abajo_ema10']: msj += "  • *Falla:* El precio cierra por encima de la EMA 10 en 1H.\n"
         msj += "\n"
 
-    # Resultados Spot
     h4_precio = h4['precio']
     h4_atr = h4['atr']
     if gatillo_spot:
@@ -393,7 +406,186 @@ def evaluar_trade_manual(ticker_raw):
     enviar_telegram(msj)
 
 # ==========================================
-# 6. ESCUCHADOR DE TELEGRAM BLINDADO
+# 6. ESCANEO RÁPIDO BAJO DEMANDA (/comprobar)
+# ==========================================
+def escanear_senales_sniper_manual():
+    enviar_telegram("🔍 Escaneando todo el mercado en busca de entradas Sniper activas... (Esto puede tomar unos segundos).")
+    
+    pares_filtrados = obtener_pares_top()
+    if not pares_filtrados:
+        enviar_telegram("❌ Error al obtener los pares del mercado en este momento.")
+        return
+
+    entradas_sniper = []
+    entradas_sniper_spot = []
+    temporalidades = ['1h', '4h', '1d', '1w']
+
+    for par in pares_filtrados:
+        analisis_tf = {}
+        es_valido = True
+        
+        for tf in temporalidades:
+            res = analizar_par_completo(par, tf)
+            if res is None:
+                es_valido = False
+                break
+            analisis_tf[tf] = res
+        
+        if not es_valido:
+            continue
+            
+        simbolo_limpio = par.split('/')[0]
+        h1 = analisis_tf['1h']
+        h4 = analisis_tf['4h']
+        d1 = analisis_tf['1d']
+        w1 = analisis_tf['1w']
+        
+        precio_act = h1['precio']
+        atr_act = h1['atr']
+        
+        adx_aprobado = h1['adx'] >= 26          
+        rsi_long_valido = h1['rsi'] < 70
+        rsi_short_valido = h1['rsi'] > 30
+
+        # Sniper 10X Long
+        gatillo_long_10x = (
+            d1['es_alcista'] and h4['es_alcista'] and
+            adx_aprobado and rsi_long_valido and
+            (h1['supertrend_buy'] or (h1['cruce_alcista'] and h1['supertrend_estado'] == "🟢 ALCISTA")) and
+            h1['cierra_arriba_ema10']
+        )
+
+        if gatillo_long_10x:
+            sl_tecnico = h1['soporte'] - (1.5 * atr_act)
+            sl_max_10x = precio_act * 0.965
+            sl_final = max(sl_tecnico, sl_max_10x)
+            pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
+            
+            resistencia_objetivo = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 3))
+            fibo = h1['fibo_long']
+            
+            tp1 = min(resistencia_objetivo, max(fibo['tp1'], precio_act + (atr_act * 1.5)))
+            tp2 = max(fibo['tp2'], tp1 * 1.015)
+            tp3 = max(fibo['tp3'], tp2 * 1.015)
+
+            riesgo = precio_act - sl_final
+            beneficio = tp1 - precio_act
+            
+            if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+                entradas_sniper.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100*10,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{(beneficio/riesgo):.1f}"
+                })
+
+        # Sniper 10X Short
+        gatillo_short_10x = (
+            d1['es_bajista'] and h4['es_bajista'] and
+            adx_aprobado and rsi_short_valido and
+            (h1['supertrend_sell'] or (h1['cruce_bajista'] and h1['supertrend_estado'] == "🔴 BAJISTA")) and
+            h1['cierra_abajo_ema10']
+        )
+
+        if gatillo_short_10x:
+            sl_tecnico = h1['resistencia'] + (1.5 * atr_act)
+            sl_max_10x = precio_act * 1.035
+            sl_final = min(sl_tecnico, sl_max_10x)
+            pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
+            
+            soporte_objetivo = h1['soporte'] if h1['soporte'] < precio_act else (precio_act - (atr_act * 3))
+            fibo = h1['fibo_short']
+            
+            tp1 = max(soporte_objetivo, min(fibo['tp1'], precio_act - (atr_act * 1.5)))
+            tp2 = min(fibo['tp2'], tp1 * 0.985)
+            tp3 = min(fibo['tp3'], tp2 * 0.985)
+
+            riesgo = sl_final - precio_act
+            beneficio = precio_act - tp1
+
+            if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+                entradas_sniper.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{(beneficio/riesgo):.1f}"
+                })
+
+        # Sniper Spot
+        h4_precio = h4['precio']
+        h4_atr = h4['atr']
+        h4_rsi_valido = h4['rsi'] < 70
+        h4_adx_valido = h4['adx'] >= 26
+
+        gatillo_spot = (
+            w1['es_alcista'] and d1['es_alcista'] and
+            h4_adx_valido and h4_rsi_valido and
+            (h4['supertrend_buy'] or (h4['cruce_alcista'] and h4['supertrend_estado'] == "🟢 ALCISTA")) and
+            h4['cierra_arriba_ema10']
+        )
+
+        if gatillo_spot:
+            sl_spot = h4['soporte'] - (1.5 * h4_atr)
+            pct_sl_spot = abs((h4_precio - sl_spot) / h4_precio) * 100
+            
+            resistencia_spot = h4['resistencia'] if h4['resistencia'] > h4_precio else (h4_precio + (h4_atr * 4))
+            fibo_s = h4['fibo_long']
+            
+            tp1_s = min(resistencia_spot, max(fibo_s['tp1'], h4_precio + (h4_atr * 2)))
+            tp2_s = max(fibo_s['tp2'], tp1_s * 1.02)
+            tp3_s = max(fibo_s['tp3'], tp2_s * 1.02)
+
+            riesgo_s = h4_precio - sl_spot
+            beneficio_s = tp1_s - h4_precio
+            
+            if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
+                entradas_sniper_spot.append({
+                    'symbol': simbolo_limpio,
+                    'precio': h4_precio, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
+                    'tp1': tp1_s, 'pct_tp1': abs((tp1_s - h4_precio)/h4_precio)*100,
+                    'tp2': tp2_s, 'pct_tp2': abs((tp2_s - h4_precio)/h4_precio)*100,
+                    'tp3': tp3_s, 'pct_tp3': abs((tp3_s - h4_precio)/h4_precio)*100,
+                    'supertrend': h4['supertrend_estado'],
+                    'rr': f"1:{(beneficio_s/riesgo_s):.1f}"
+                })
+
+    # Respuesta al usuario
+    if not entradas_sniper and not entradas_sniper_spot:
+        enviar_telegram("❌ *NO HAY ENTRADAS SNIPER ACTIVAS*\n\nEn este momento ninguna criptomoneda del Top 150 cumple con las condiciones estrictas de la estrategia Sniper (10X o Spot). No es recomendable operar.")
+        return
+
+    if entradas_sniper:
+        msj_sniper = "⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
+        for op in entradas_sniper[:5]:
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+            msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
+            msj_sniper += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
+            msj_sniper += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
+            msj_sniper += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
+            msj_sniper += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
+            msj_sniper += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
+        enviar_telegram(msj_sniper)
+
+    if entradas_sniper_spot:
+        msj_spot = "🎯 *ENTRADAS SNIPER SPOT DETECTADAS:* 🎯\n\n"
+        for op in entradas_sniper_spot[:5]:
+            msj_spot += f"🪙 *{op['symbol']}* -> *LONG SPOT 🟢* _(R:R {op['rr']})_\n"
+            msj_spot += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
+            msj_spot += f"💵 *Precio Entrada:* `{op['precio']:.4f}`\n"
+            msj_spot += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}%)_\n"
+            msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}%)_\n"
+            msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}%)_\n"
+            msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}%)_\n\n"
+        enviar_telegram(msj_spot)
+
+# ==========================================
+# 7. ESCUCHADOR DE TELEGRAM BLINDADO
 # ==========================================
 def escuchar_mensajes_telegram():
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -434,12 +626,16 @@ def escuchar_mensajes_telegram():
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("ℹ️ Indica la moneda para evaluar trade. Ejemplo: `/trade BTC` o `/trade ETH`")
+
+                    elif text.startswith("/comprobar") or text.startswith("/senales"):
+                        hilo_comprobar = threading.Thread(target=escanear_senales_sniper_manual, daemon=True)
+                        hilo_comprobar.start()
         except Exception:
             pass
         time.sleep(1)
 
 # ==========================================
-# 7. ESCANEO Y CLASIFICACIÓN GENERAL
+# 8. ESCANEO Y CLASIFICACIÓN GENERAL (CADA 2 HORAS)
 # ==========================================
 ARCHIVO_BLOQUEO = "ultimo_escaneo.txt"
 
@@ -459,22 +655,10 @@ def analizar_mercado():
     print("🔎 Escaneando mercado...")
     
     try:
-        exchange.load_markets()
-        tickers = exchange.fetch_tickers()
-        
-        estables_ignoradas = ['USDC', 'USDT', 'BUSD', 'FDUSD', 'EUR', 'DAI', 'TUSD']
-        
-        pares_usdt = [
-            {'symbol': symbol, 'volume': ticker['quoteVolume']}
-            for symbol, ticker in tickers.items()
-            if symbol.endswith('/USDT') 
-            and ticker.get('quoteVolume') is not None
-            and symbol.split('/')[0] not in estables_ignoradas
-        ]
-        
-        pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
-        pares_filtrados = [item['symbol'] for item in pares_usdt[:150]]
-        
+        pares_filtrados = obtener_pares_top()
+        if not pares_filtrados:
+            return
+            
         longs_perfectos, longs_diario_semanal = [], []
         shorts_perfectos, shorts_diario_semanal = [], []
         entradas_sniper = []
@@ -482,7 +666,7 @@ def analizar_mercado():
         
         temporalidades = ['1h', '4h', '1d', '1w']
 
-        for count, par in enumerate(pares_filtrados, 1):
+        for par in pares_filtrados:
             analisis_tf = {}
             es_valido = True
             
@@ -529,7 +713,6 @@ def analizar_mercado():
                 rsi_long_valido = h1['rsi'] < 70
                 rsi_short_valido = h1['rsi'] > 30
 
-                # 1. ENTRADAS SNIPER 10X (Tendencia 1D y 4H + Gatillo 1H)
                 gatillo_long_10x = (
                     d1['es_alcista'] and h4['es_alcista'] and
                     adx_aprobado and rsi_long_valido and
@@ -598,7 +781,6 @@ def analizar_mercado():
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                # 2. ENTRADAS SNIPER SPOT (Tendencia 1W y 1D + Gatillo 4H)
                 h4_precio = h4['precio']
                 h4_atr = h4['atr']
                 h4_rsi_valido = h4['rsi'] < 70
@@ -676,7 +858,7 @@ def analizar_mercado():
                 msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}%)_\n"
                 msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}%)_\n\n"
             
-            msj_spot += "💡 _Comandos útiles:_\n• `/analizar BTC` (Análisis general)\n• `/trade BTC` (Evaluación de trade Sniper)"
+            msj_spot += "💡 _Comandos útiles:_\n• `/analizar BTC`\n• `/trade BTC`\n• `/comprobar` (Escaneo general Sniper bajo demanda)"
             enviar_telegram(msj_spot)
 
         print("✅ Escaneo completado.")
@@ -685,7 +867,7 @@ def analizar_mercado():
         print(f"Error en el escaneo general: {e}")
 
 # ==========================================
-# 8. BUCLE PRINCIPAL CON CANDADO ABSOLUTO
+# 9. BUCLE PRINCIPAL CON CANDADO ABSOLUTO
 # ==========================================
 if __name__ == "__main__":
     lock_file = "app.lock"
@@ -703,7 +885,7 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    print("🚀 Bot actualizado con comando /trade manual para evaluar estrategias Sniper bajo demanda.")
+    print("🚀 Bot actualizado con comando /comprobar para escanear entradas Sniper al instante.")
     
     analizar_mercado()
     
