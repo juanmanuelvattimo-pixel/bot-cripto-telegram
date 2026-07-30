@@ -24,11 +24,9 @@ def enviar_telegram(mensaje):
     
     tiempo_actual = time.time()
     
-    # Si este mensaje exacto ya se mandó recientemente, se descarta
     if mensaje in historial_mensajes_enviados:
         return
         
-    # Forzar una pausa mínima de 3 segundos entre cada envío en ráfaga
     if (tiempo_actual - tiempo_ultimo_envio) < 3.0:
         time.sleep(3.0)
 
@@ -46,7 +44,6 @@ def enviar_telegram(mensaje):
         if res.status_code == 200:
             tiempo_ultimo_envio = time.time()
             historial_mensajes_enviados.append(mensaje)
-            # Mantener solo los últimos 15 mensajes en memoria
             if len(historial_mensajes_enviados) > 15:
                 historial_mensajes_enviados.pop(0)
     except Exception as e:
@@ -105,7 +102,7 @@ def analizar_par_completo(symbol, timeframe):
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=min(14, n_velas-1))
         
         df['vol_ema'] = ta.trend.ema_indicator(df['volume'], window=min(20, n_velas-1))
-        volumen_alto = df['volume'].iloc[-1] > df['vol_ema'].iloc[-1]
+        volumen_alto = df['volume'].iloc[-2] > df['vol_ema'].iloc[-2] # Evaluamos la última vela cerrada (-2)
         
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=min(14, n_velas-1))
         df['adx'] = adx_ind.adx()
@@ -127,7 +124,11 @@ def analizar_par_completo(symbol, timeframe):
 
         e10, e20, e55 = df['ema10'].iloc[-1], df['ema20'].iloc[-1], df['ema55'].iloc[-1]
         wt1, wt2 = df['wt1'].iloc[-1], df['wt2'].iloc[-1]
-        wt1_prev, wt2_prev = df['wt1'].iloc[-2], df['wt2'].iloc[-2]
+        
+        # Validaciones usando la última vela CERRADA (-2) frente a la anterior (-3) para evitar ruido en vivo
+        wt1_prev, wt2_prev = df['wt1'].iloc[-3], df['wt2'].iloc[-3]
+        wt1_closed, wt2_closed = df['wt1'].iloc[-2], df['wt2'].iloc[-2]
+        
         adx = df['adx'].iloc[-1]
         plus_di = df['plus_di'].iloc[-1]
         minus_di = df['minus_di'].iloc[-1]
@@ -135,11 +136,14 @@ def analizar_par_completo(symbol, timeframe):
         mfi = df['mfi'].iloc[-1]
         atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
         
-        oracle_actual = df['oracle_ribbon'].iloc[-1]
-        oracle_previo = df['oracle_ribbon'].iloc[-2] if len(df['oracle_ribbon']) > 1 else oracle_actual
+        oracle_actual = df['oracle_ribbon'].iloc[-2] # Estado en vela cerrada
+        oracle_previo = df['oracle_ribbon'].iloc[-3] if len(df['oracle_ribbon']) > 2 else oracle_actual
         
         oracle_buy = (not oracle_previo) and oracle_actual
         oracle_sell = oracle_previo and (not oracle_actual)
+        
+        cruce_alcista_cerrado = (wt1_prev <= wt2_prev) and (wt1_closed > wt2_closed)
+        cruce_bajista_cerrado = (wt1_prev >= wt2_prev) and (wt1_closed < wt2_closed)
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
@@ -160,7 +164,7 @@ def analizar_par_completo(symbol, timeframe):
         puntos_bajistas = sum([precio <= e55, e10 <= e20, wt1 <= wt2, not oracle_actual, mfi <= 50])
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
-        adx_fuerza = "Fuerte 💪" if adx >= 23 else "Débil / Rango 😴"
+        adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
 
         return {
             'precio': precio,
@@ -173,8 +177,8 @@ def analizar_par_completo(symbol, timeframe):
             'volumen_alto': volumen_alto,
             'es_alcista': puntos_alcistas >= 4,
             'es_bajista': puntos_bajistas >= 4,
-            'cruce_alcista': (wt1_prev <= wt2_prev) and (wt1 > wt2),
-            'cruce_bajista': (wt1_prev >= wt2_prev) and (wt1 < wt2),
+            'cruce_alcista': cruce_alcista_cerrado,
+            'cruce_bajista': cruce_bajista_cerrado,
             'oracle_buy': oracle_buy,
             'oracle_sell': oracle_sell,
             'oracle_estado': "🟢 COMPRA" if oracle_actual else "🔴 VENTA",
@@ -274,14 +278,14 @@ def escuchar_mensajes_telegram():
         time.sleep(1)
 
 # ==========================================
-# 7. ESCANEO Y CLASIFICACIÓN GENERAL (CON FILTROS DE PRECISIÓN)
+# 7. ESCANEO Y CLASIFICACIÓN GENERAL
 # ==========================================
 ARCHIVO_BLOQUEO = "ultimo_escaneo.txt"
 
 def analizar_mercado():
     if os.path.exists(ARCHIVO_BLOQUEO):
         tiempo_archivo = os.path.getmtime(ARCHIVO_BLOQUEO)
-        if (time.time() - tiempo_archivo) < 1800:  # 30 minutos de protección
+        if (time.time() - tiempo_archivo) < 1800:
             print("⏳ Otro proceso ya escaneó recientemente. Saltando este ciclo.")
             return
 
@@ -356,15 +360,14 @@ def analizar_mercado():
                 precio_act = h1['precio']
                 atr_act = h1['atr']
                 
-                # --- NUEVOS FILTROS DE ALTA PRECISIÓN ---
-                adx_aprobado_10x = h1['adx'] >= 26          # Fuerza de tendencia real (Subido de 20 a 26)
-                volumen_aprobado = h1['volumen_alto'] == True # Volumen institucional obligatorio
+                # --- FILTROS ---
+                adx_aprobado_10x = h1['adx'] >= 26          # ADX en 26
+                volumen_aprobado = h1['volumen_alto'] == True # Basado en la vela cerrada
                 
-                # Filtros de RSI en 1H para evitar extremos (sobrecompra/sobreventa)
                 rsi_long_valido = h1['rsi'] < 70
                 rsi_short_valido = h1['rsi'] > 30
 
-                # 1. Entradas Sniper 10X (Con filtros endurecidos)
+                # 1. Entradas Sniper 10X (Con confirmación de cierre de vela)
                 if (estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" 
                     and adx_aprobado_10x and volumen_aprobado and rsi_long_valido
                     and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA"))):
@@ -415,13 +418,13 @@ def analizar_mercado():
                             'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                             'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                            'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
-                            'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
+                            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                            'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                             'oracle': h1['oracle_estado'],
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                # 2. Entradas Sniper en Spot Puro (Mercado al contado)
+                # 2. Entradas Sniper en Spot Puro
                 if (estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" 
                     and adx_aprobado_10x and volumen_aprobado and rsi_long_valido
                     and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA"))):
@@ -464,9 +467,8 @@ def analizar_mercado():
         enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", shorts_perfectos)
         enviar_lista_telegram("📉 *TOP TENDENCIA BAJISTA (1D + 1S)*", "Tendencia Mayor Bajista Confirmada", shorts_diario_semanal)
 
-        # Envío Alertas Sniper 10X
         if entradas_sniper:
-            msj_sniper = "⚡ *ENTRADAS SNIPER (FILTRADAS R:R Y VOLUMEN 10X)* ⚡\n\n"
+            msj_sniper = "⚡ *ENTRADAS SNIPER (VELA CERRADA CONFIRMADA 10X)* ⚡\n\n"
             for op in entradas_sniper[:5]:
                 msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
                 msj_sniper += f"🔮 *Oracle:* `{op['oracle']}`\n"
@@ -478,9 +480,8 @@ def analizar_mercado():
             
             enviar_telegram(msj_sniper)
 
-        # Envío Alertas Sniper Spot
         if entradas_sniper_spot:
-            msj_spot = "🎯 *ENTRADAS SNIPER SPOT (MERCADO AL CONTADO)* 🎯\n\n"
+            msj_spot = "🎯 *ENTRADAS SNIPER SPOT (VELA CERRADA CONFIRMADA)* 🎯\n\n"
             for op in entradas_sniper_spot[:5]:
                 msj_spot += f"🪙 *{op['symbol']}* -> *LONG SPOT 🟢* _(R:R {op['rr']})_\n"
                 msj_spot += f"🔮 *Oracle:* `{op['oracle']}`\n"
@@ -517,7 +518,7 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    print("🚀 Bot iniciado correctamente (Instancia Única).")
+    print("🚀 Bot iniciado correctamente con confirmación de vela cerrada y ADX en 26.")
     
     analizar_mercado()
     
