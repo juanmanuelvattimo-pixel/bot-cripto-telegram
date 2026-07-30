@@ -100,9 +100,6 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=min(14, n_velas-1))
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=min(14, n_velas-1))
         
-        df['vol_ema'] = ta.trend.ema_indicator(df['volume'], window=min(20, n_velas-1))
-        volumen_alto = df['volume'].iloc[-2] > df['vol_ema'].iloc[-2]
-        
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=min(14, n_velas-1))
         df['adx'] = adx_ind.adx()
         df['plus_di'] = adx_ind.adx_pos()
@@ -172,7 +169,6 @@ def analizar_par_completo(symbol, timeframe):
             'adx': adx,
             'adx_direccion': adx_direccion,
             'adx_fuerza': adx_fuerza,
-            'volumen_alto': volumen_alto,
             'es_alcista': puntos_alcistas >= 4,
             'es_bajista': puntos_bajistas >= 4,
             'cruce_alcista': cruce_alcista_cerrado,
@@ -225,15 +221,12 @@ def analizar_cripto_individual(ticker_raw):
         else:
             tendencia = "⚪ NEUTRA / RANGO"
             
-        vol_icon = "🔥 Alto" if d['volumen_alto'] else "💤 Normal/Bajo"
-        
         msj += f"⏱️ *TEMPORALIDAD {tf.upper()}*\n"
         msj += f"• *Tendencia:* {tendencia}\n"
         msj += f"• *Oracle Ribbon:* `{d['oracle_estado']}`\n"
         msj += f"• *Cipher B (Momentum):* `{d['cipher_estado']}`\n"
         msj += f"• *Flujo Dinero (MFI):* `{d['mfi']:.1f}` _({'🟢 Entrada Capital' if d['mfi'] > 50 else '🔴 Salida Capital'})_\n"
         msj += f"• *Fuerza (ADX):* `{d['adx']:.1f}` -> *{d['adx_direccion']}* _({d['adx_fuerza']})_\n"
-        msj += f"• *Volumen:* {vol_icon}\n"
         msj += "-----------------------------------\n"
 
     enviar_telegram(msj)
@@ -363,14 +356,12 @@ def analizar_mercado():
                 atr_act = h1['atr']
                 
                 adx_aprobado = h1['adx'] >= 26          
-                volumen_aprobado = h1['volumen_alto'] == True 
-                
                 rsi_long_valido = h1['rsi'] < 70
                 rsi_short_valido = h1['rsi'] > 30
 
-                # 1. ENTRADAS SNIPER 10X: Tendencia en 1D y 4H + Gatillo en 1H
+                # 1. ENTRADAS SNIPER 10X (Tendencia 1D y 4H + Gatillo 1H)
                 if (d1['es_alcista'] and h4['es_alcista'] 
-                    and adx_aprobado and volumen_aprobado and rsi_long_valido
+                    and adx_aprobado and rsi_long_valido
                     and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA"))):
                     
                     sl_tecnico = min(precio_act - (1.2 * atr_act), h1['soporte'] * 0.998)
@@ -398,7 +389,7 @@ def analizar_mercado():
                         })
 
                 elif (d1['es_bajista'] and h4['es_bajista'] 
-                      and adx_aprobado and volumen_aprobado and rsi_short_valido
+                      and adx_aprobado and rsi_short_valido
                       and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 VENTA"))):
                     
                     sl_tecnico = max(precio_act + (1.2 * atr_act), h1['resistencia'] * 1.002)
@@ -425,16 +416,14 @@ def analizar_mercado():
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                # 2. ENTRADAS SNIPER SPOT: Tendencia en 1W y 1D + Gatillo en 4H
-                # Nota: Para Spot usamos los datos de 4H como referencia del gatillo
+                # 2. ENTRADAS SNIPER SPOT (Tendencia 1W y 1D + Gatillo 4H)
                 h4_precio = h4['precio']
                 h4_atr = h4['atr']
-                h4_vol_aprobado = h4['volumen_alto'] == True
                 h4_rsi_valido = h4['rsi'] < 70
                 h4_adx_valido = h4['adx'] >= 26
 
                 if (w1['es_alcista'] and d1['es_alcista'] 
-                    and h4_adx_valido and h4_vol_aprobado and h4_rsi_valido
+                    and h4_adx_valido and h4_rsi_valido
                     and (h4['oracle_buy'] or (h4['cruce_alcista'] and h4['oracle_estado'] == "🟢 COMPRA"))):
                     
                     sl_spot = min(h4_precio - (1.5 * h4_atr), h4['soporte'] * 0.990)
@@ -526,7 +515,7 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    print("🚀 Bot iniciado correctamente con filtros de temporalidad personalizados para 10X y Spot.")
+    print("🚀 Bot iniciado correctamente sin filtro de volumen y con temporalidades ajustadas.")
     
     analizar_mercado()
     
