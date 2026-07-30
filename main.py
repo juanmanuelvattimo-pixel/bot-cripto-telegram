@@ -80,6 +80,71 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
+# NUEVO MÓDULO: REBOTE DE RANGO (15m/1H)
+# ==========================================
+def detectar_rebote_rango_avanzado(df_15m, df_4h=None):
+    """
+    Módulo paralelo optimizado para 15m/1H con:
+    - Filtro de ADX y Volumen (Rango limpio)
+    - Confirmación de Cierre de Vela
+    - Filtro de Tendencia Macro (4H)
+    - Stop Loss Fijo del 1.5% (15% de riesgo a 10x)
+    """
+    if len(df_15m) < 30:
+        return None
+
+    ultimo = df_15m.iloc[-1]
+    
+    if ultimo['ADX'] > 22:
+        return None
+    
+    col_volumen = 'volume' if 'volume' in df_15m.columns else 'Volume'
+    volumen_promedio = df_15m[col_volumen].rolling(window=20).mean().iloc[-1]
+    if ultimo[col_volumen] > (volumen_promedio * 1.5):
+        return None
+        
+    col_close = 'close' if 'close' in df_15m.columns else 'Close'
+    
+    if df_4h is not None and len(df_4h) > 0:
+        ultimo_4h = df_4h.iloc[-1]
+        if 'ema50' in ultimo_4h and 'ema200' in ultimo_4h:
+            tendencia_bajista_macro = ultimo_4h['ema50'] < ultimo_4h['ema200']
+            tendencia_alcista_macro = ultimo_4h['ema50'] > ultimo_4h['ema200']
+            
+            if ultimo[col_close] <= ultimo['lower_band'] and tendencia_bajista_macro:
+                return None
+            if ultimo[col_close] >= ultimo['upper_band'] and tendencia_alcista_macro:
+                return None
+
+    if ultimo[col_close] <= ultimo['lower_band'] and ultimo['rsi'] < 30:
+        precio_entrada = ultimo[col_close]
+        stop_loss = precio_entrada * 0.985
+        take_profit = ultimo['middle_band']
+        
+        return {
+            "Señal": "LONG (Rebote de Rango 15m/1H - 10x)",
+            "Precio": precio_entrada,
+            "Stop Loss": stop_loss,
+            "Take Profit": take_profit,
+            "Riesgo": "Fijo 1.5% con Filtro Macro, Cierre y Volumen"
+        }
+        
+    if ultimo[col_close] >= ultimo['upper_band'] and ultimo['rsi'] > 70:
+        precio_entrada = ultimo[col_close]
+        stop_loss = precio_entrada * 1.015
+        take_profit = ultimo['middle_band']
+        
+        return {
+            "Señal": "SHORT (Rebote de Rango 15m/1H - 10x)",
+            "Precio": precio_entrada,
+            "Stop Loss": stop_loss,
+            "Take Profit": take_profit,
+            "Riesgo": "Fijo 1.5% con Filtro Macro, Cierre y Volumen"
+        }
+        
+    return None
+
+# ==========================================
 # 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
