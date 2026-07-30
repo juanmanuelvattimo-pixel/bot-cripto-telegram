@@ -5,6 +5,7 @@ import pandas as pd
 import ta
 import threading
 import os
+import sys
 
 # ==========================================
 # 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO MULTI-MENSAJE
@@ -273,7 +274,7 @@ def escuchar_mensajes_telegram():
         time.sleep(1)
 
 # ==========================================
-# 7. ESCANEO Y CLASIFICACIÓN GENERAL (BLOQUEO POR ARCHIVO)
+# 7. ESCANEO Y CLASIFICACIÓN GENERAL (CON FILTROS DE PRECISIÓN)
 # ==========================================
 ARCHIVO_BLOQUEO = "ultimo_escaneo.txt"
 
@@ -312,6 +313,7 @@ def analizar_mercado():
         longs_perfectos, longs_diario_semanal = [], []
         shorts_perfectos, shorts_diario_semanal = [], []
         entradas_sniper = []
+        entradas_sniper_spot = []
         
         temporalidades = ['1h', '4h', '1d', '1w']
 
@@ -353,9 +355,20 @@ def analizar_mercado():
                 h1 = analisis_tf['1h']
                 precio_act = h1['precio']
                 atr_act = h1['atr']
-                adx_aprobado = h1['adx'] >= 20
+                
+                # --- NUEVOS FILTROS DE ALTA PRECISIÓN ---
+                adx_aprobado_10x = h1['adx'] >= 26          # Fuerza de tendencia real (Subido de 20 a 26)
+                volumen_aprobado = h1['volumen_alto'] == True # Volumen institucional obligatorio
+                
+                # Filtros de RSI en 1H para evitar extremos (sobrecompra/sobreventa)
+                rsi_long_valido = h1['rsi'] < 70
+                rsi_short_valido = h1['rsi'] > 30
 
-                if estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" and adx_aprobado and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA")):
+                # 1. Entradas Sniper 10X (Con filtros endurecidos)
+                if (estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" 
+                    and adx_aprobado_10x and volumen_aprobado and rsi_long_valido
+                    and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA"))):
+                    
                     sl_tecnico = min(precio_act - (1.2 * atr_act), h1['soporte'] * 0.998)
                     sl_max_10x = precio_act * 0.983
                     sl_final = max(sl_tecnico, sl_max_10x)
@@ -380,7 +393,10 @@ def analizar_mercado():
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                elif estados['1d'] == "🔴" and estados['1w'] == "🔴" and estados['4h'] == "🔴" and adx_aprobado and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 VENTA")):
+                elif (estados['1d'] == "🔴" and estados['1w'] == "🔴" and estados['4h'] == "🔴" 
+                      and adx_aprobado_10x and volumen_aprobado and rsi_short_valido
+                      and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 VENTA"))):
+                    
                     sl_tecnico = max(precio_act + (1.2 * atr_act), h1['resistencia'] * 1.002)
                     sl_max_10x = precio_act * 1.017
                     sl_final = min(sl_tecnico, sl_max_10x)
@@ -399,10 +415,37 @@ def analizar_mercado():
                             'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                             'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
-                            'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
+                            'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
+                            'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
                             'oracle': h1['oracle_estado'],
                             'rr': f"1:{(beneficio/riesgo):.1f}"
+                        })
+
+                # 2. Entradas Sniper en Spot Puro (Mercado al contado)
+                if (estados['1d'] == "🟢" and estados['1w'] == "🟢" and estados['4h'] == "🟢" 
+                    and adx_aprobado_10x and volumen_aprobado and rsi_long_valido
+                    and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA"))):
+                    
+                    sl_spot = min(precio_act - (1.5 * atr_act), h1['soporte'] * 0.990)
+                    pct_sl_spot = abs((precio_act - sl_spot) / precio_act) * 100
+                    
+                    fibo_s = h1['fibo_long']
+                    tp1_s = max(fibo_s['tp1'], precio_act * 1.02)
+                    tp2_s = max(fibo_s['tp2'], precio_act * 1.05)
+                    tp3_s = max(fibo_s['tp3'], precio_act * 1.10)
+
+                    riesgo_s = precio_act - sl_spot
+                    beneficio_s = tp1_s - precio_act
+                    
+                    if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
+                        entradas_sniper_spot.append({
+                            'symbol': simbolo_limpio,
+                            'precio': precio_act, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
+                            'tp1': tp1_s, 'pct_tp1': abs((tp1_s - precio_act)/precio_act)*100,
+                            'tp2': tp2_s, 'pct_tp2': abs((tp2_s - precio_act)/precio_act)*100,
+                            'tp3': tp3_s, 'pct_tp3': abs((tp3_s - precio_act)/precio_act)*100,
+                            'oracle': h1['oracle_estado'],
+                            'rr': f"1:{(beneficio_s/riesgo_s):.1f}"
                         })
 
         def enviar_lista_telegram(titulo, descripcion, lista):
@@ -421,6 +464,7 @@ def analizar_mercado():
         enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", shorts_perfectos)
         enviar_lista_telegram("📉 *TOP TENDENCIA BAJISTA (1D + 1S)*", "Tendencia Mayor Bajista Confirmada", shorts_diario_semanal)
 
+        # Envío Alertas Sniper 10X
         if entradas_sniper:
             msj_sniper = "⚡ *ENTRADAS SNIPER (FILTRADAS R:R Y VOLUMEN 10X)* ⚡\n\n"
             for op in entradas_sniper[:5]:
@@ -432,8 +476,22 @@ def analizar_mercado():
                 msj_sniper += f"🎯 *TP2 (Retest):* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
                 msj_sniper += f"🎯 *TP3 (Runner):* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
             
-            msj_sniper += "💡 _¿Quieres consultar el estado Spot de una moneda? Escribe:_ `/analizar BTC`"
             enviar_telegram(msj_sniper)
+
+        # Envío Alertas Sniper Spot
+        if entradas_sniper_spot:
+            msj_spot = "🎯 *ENTRADAS SNIPER SPOT (MERCADO AL CONTADO)* 🎯\n\n"
+            for op in entradas_sniper_spot[:5]:
+                msj_spot += f"🪙 *{op['symbol']}* -> *LONG SPOT 🟢* _(R:R {op['rr']})_\n"
+                msj_spot += f"🔮 *Oracle:* `{op['oracle']}`\n"
+                msj_spot += f"💵 *Precio Entrada:* `{op['precio']:.4f}`\n"
+                msj_spot += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}%)_\n"
+                msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}%)_\n"
+                msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}%)_\n"
+                msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}%)_\n\n"
+            
+            msj_spot += "💡 _¿Quieres consultar el estado Spot de una moneda? Escribe:_ `/analizar BTC`"
+            enviar_telegram(msj_spot)
 
         print("✅ Escaneo completado.")
 
@@ -443,16 +501,12 @@ def analizar_mercado():
 # ==========================================
 # 8. BUCLE PRINCIPAL CON CANDADO ABSOLUTO
 # ==========================================
-import sys
-
 if __name__ == "__main__":
-    # Evitar doble ejecución interna en el mismo contenedor
     lock_file = "app.lock"
     if os.path.exists(lock_file):
-        # Si el archivo de bloqueo ya existe y es muy reciente, matamos este proceso duplicado al instante
         if (time.time() - os.path.getmtime(lock_file)) < 10:
             print("🛑 Instancia duplicada detectada internamente. Cerrando proceso secundario.")
-        sys.exit(0)
+            sys.exit(0)
         
     try:
         with open(lock_file, "w") as f:
@@ -460,19 +514,15 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    # Iniciar hilo de Telegram
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
     print("🚀 Bot iniciado correctamente (Instancia Única).")
     
-    # Primer escaneo
     analizar_mercado()
     
-    # Bucle principal (cada 7200 segundos / 2 horas)
     while True:
-        time.sleep(7200)
-        # Actualizar la marca del archivo de bloqueo para mantenerlo vivo
+        time.sleep(3600)
         try:
             with open(lock_file, "w") as f:
                 f.write(str(os.getpid()))
