@@ -105,24 +105,36 @@ def analizar_par_completo(symbol, timeframe):
         df['plus_di'] = adx_ind.adx_pos()
         df['minus_di'] = adx_ind.adx_neg()
         
-        ap3 = (df['high'] + df['low'] + df['close']) / 3
-        esa = ta.trend.ema_indicator(ap3, window=min(10, n_velas-1))
-        d = ta.trend.ema_indicator((ap3 - esa).abs(), window=min(10, n_velas-1))
-        ci = (ap3 - esa) / (0.015 * d)
-        df['wt1'] = ta.trend.ema_indicator(ci, window=min(21, n_velas-1))
-        df['wt2'] = ta.trend.sma_indicator(df['wt1'], window=min(4, len(df['wt1'].dropna())-1))
-        
-        df['oracle_fast'] = ta.trend.ema_indicator(df['close'], window=min(8, n_velas-1))
-        df['oracle_slow'] = ta.trend.ema_indicator(df['close'], window=min(13, n_velas-1))
-        df['oracle_ribbon'] = df['oracle_fast'] > df['oracle_slow']
-        
+        # SUPERTREND (Reemplazo del Oracle Ribbon)
         df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=min(14, n_velas-1))
+        multiplicador = 2.0
+        hl2 = (df['high'] + df['low']) / 2
+        df['up_basic'] = hl2 - (multiplicador * df['atr'])
+        df['dn_basic'] = hl2 + (multiplicador * df['atr'])
+        
+        df['supertrend_direction'] = 1
+        for i in range(1, len(df)):
+            if df['close'].iloc[i] > df['dn_basic'].iloc[i-1]:
+                df.loc[df.index[i], 'supertrend_direction'] = 1
+            elif df['close'].iloc[i] < df['up_basic'].iloc[i-1]:
+                df.loc[df.index[i], 'supertrend_direction'] = -1
+            else:
+                df.loc[df.index[i], 'supertrend_direction'] = df['supertrend_direction'].iloc[i-1]
+
+        # ESTOCÁSTICO RÁPIDO (Reemplazo del Cipher B)
+        low_min = df['low'].rolling(window=14).min()
+        high_max = df['high'].rolling(window=14).max()
+        df['stoch_k'] = ((df['close'] - low_min) / (high_max - low_min)) * 100
+        df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
 
         e10, e20, e55 = df['ema10'].iloc[-1], df['ema20'].iloc[-1], df['ema55'].iloc[-1]
-        wt1, wt2 = df['wt1'].iloc[-1], df['wt2'].iloc[-1]
+        st_dir = df['supertrend_direction'].iloc[-1]
+        st_dir_prev = df['supertrend_direction'].iloc[-2] if len(df['supertrend_direction']) > 1 else st_dir
         
-        wt1_prev, wt2_prev = df['wt1'].iloc[-3], df['wt2'].iloc[-3]
-        wt1_closed, wt2_closed = df['wt1'].iloc[-2], df['wt2'].iloc[-2]
+        stoch_k = df['stoch_k'].iloc[-1]
+        stoch_d = df['stoch_d'].iloc[-1]
+        stoch_k_prev = df['stoch_k'].iloc[-2]
+        stoch_d_prev = df['stoch_d'].iloc[-2]
         
         adx = df['adx'].iloc[-1]
         plus_di = df['plus_di'].iloc[-1]
@@ -131,14 +143,11 @@ def analizar_par_completo(symbol, timeframe):
         mfi = df['mfi'].iloc[-1]
         atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
         
-        oracle_actual = df['oracle_ribbon'].iloc[-2]
-        oracle_previo = df['oracle_ribbon'].iloc[-3] if len(df['oracle_ribbon']) > 2 else oracle_actual
+        supertrend_buy = (st_dir_prev == -1) and (st_dir == 1)
+        supertrend_sell = (st_dir_prev == 1) and (st_dir == -1)
         
-        oracle_buy = (not oracle_previo) and oracle_actual
-        oracle_sell = oracle_previo and (not oracle_actual)
-        
-        cruce_alcista_cerrado = (wt1_prev <= wt2_prev) and (wt1_closed > wt2_closed)
-        cruce_bajista_cerrado = (wt1_prev >= wt2_prev) and (wt1_closed < wt2_closed)
+        cruce_alcista_estocastico = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
+        cruce_bajista_estocastico = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
@@ -155,8 +164,8 @@ def analizar_par_completo(symbol, timeframe):
         fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
         fibo_tp3_short = precio - (rango_fibo * 1.618)
 
-        puntos_alcistas = sum([precio > e55, e10 > e20, wt1 > wt2, oracle_actual, mfi > 50])
-        puntos_bajistas = sum([precio <= e55, e10 <= e20, wt1 <= wt2, not oracle_actual, mfi <= 50])
+        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1, mfi > 50])
+        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
         adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
@@ -169,14 +178,16 @@ def analizar_par_completo(symbol, timeframe):
             'adx': adx,
             'adx_direccion': adx_direccion,
             'adx_fuerza': adx_fuerza,
-            'es_alcista': puntos_alcistas >= 4,
-            'es_bajista': puntos_bajistas >= 4,
-            'cruce_alcista': cruce_alcista_cerrado,
-            'cruce_bajista': cruce_bajista_cerrado,
-            'oracle_buy': oracle_buy,
-            'oracle_sell': oracle_sell,
-            'oracle_estado': "🟢 COMPRA" if oracle_actual else "🔴 VENTA",
-            'cipher_estado': "🟢 COMPRA" if wt1 > wt2 else "🔴 VENTA",
+            'es_alcista': puntos_alcistas >= 3,
+            'es_bajista': puntos_bajistas >= 3,
+            'cruce_alcista': cruce_alcista_estocastico,
+            'cruce_bajista': cruce_bajista_estocastico,
+            'supertrend_buy': supertrend_buy,
+            'supertrend_sell': supertrend_sell,
+            'supertrend_estado': "🟢 ALCISTA" if st_dir == 1 else "🔴 BAJISTA",
+            'stoch_estado': "🟢 COMPRA" if stoch_k > stoch_d else "🔴 VENTA",
+            'cierra_arriba_ema10': precio > df['ema10'].iloc[-1],
+            'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
             'soporte': soporte_key,
             'resistencia': resistencia_key,
             'fibo_long': {'tp1': fibo_tp1_long, 'tp2': fibo_tp2_long, 'tp3': fibo_tp3_long},
@@ -223,8 +234,8 @@ def analizar_cripto_individual(ticker_raw):
             
         msj += f"⏱️ *TEMPORALIDAD {tf.upper()}*\n"
         msj += f"• *Tendencia:* {tendencia}\n"
-        msj += f"• *Oracle Ribbon:* `{d['oracle_estado']}`\n"
-        msj += f"• *Cipher B (Momentum):* `{d['cipher_estado']}`\n"
+        msj += f"• *SuperTrend:* `{d['supertrend_estado']}`\n"
+        msj += f"• *Estocástico Rápido:* `{d['stoch_estado']}`\n"
         msj += f"• *Flujo Dinero (MFI):* `{d['mfi']:.1f}` _({'🟢 Entrada Capital' if d['mfi'] > 50 else '🔴 Salida Capital'})_\n"
         msj += f"• *Fuerza (ADX):* `{d['adx']:.1f}` -> *{d['adx_direccion']}* _({d['adx_fuerza']})_\n"
         msj += "-----------------------------------\n"
@@ -359,13 +370,17 @@ def analizar_mercado():
                 rsi_long_valido = h1['rsi'] < 70
                 rsi_short_valido = h1['rsi'] > 30
 
-                # 1. ENTRADAS SNIPER 10X (Tendencia 1D y 4H + Gatillo 1H)
-                if (d1['es_alcista'] and h4['es_alcista'] 
-                    and adx_aprobado and rsi_long_valido
-                    and (h1['oracle_buy'] or (h1['cruce_alcista'] and h1['oracle_estado'] == "🟢 COMPRA"))):
-                    
-                    sl_tecnico = min(precio_act - (1.2 * atr_act), h1['soporte'] * 0.998)
-                    sl_max_10x = precio_act * 0.983
+                # 1. ENTRADAS SNIPER 10X (Tendencia 1D y 4H + Gatillo 1H con SuperTrend + Estocástico + Cierre EMA 10)
+                gatillo_long_10x = (
+                    d1['es_alcista'] and h4['es_alcista'] and
+                    adx_aprobado and rsi_long_valido and
+                    (h1['supertrend_buy'] or (h1['cruce_alcista'] and h1['supertrend_estado'] == "🟢 ALCISTA")) and
+                    h1['cierra_arriba_ema10']
+                )
+
+                if gatillo_long_10x:
+                    sl_tecnico = h1['soporte'] - (1.5 * atr_act)
+                    sl_max_10x = precio_act * 0.965  # Límite máximo de 3.5% para 10X
                     sl_final = max(sl_tecnico, sl_max_10x)
                     pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
                     
@@ -384,16 +399,20 @@ def analizar_mercado():
                             'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100*10,
                             'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                             'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
-                            'oracle': h1['oracle_estado'],
+                            'supertrend': h1['supertrend_estado'],
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                elif (d1['es_bajista'] and h4['es_bajista'] 
-                      and adx_aprobado and rsi_short_valido
-                      and (h1['oracle_sell'] or (h1['cruce_bajista'] and h1['oracle_estado'] == "🔴 VENTA"))):
-                    
-                    sl_tecnico = max(precio_act + (1.2 * atr_act), h1['resistencia'] * 1.002)
-                    sl_max_10x = precio_act * 1.017
+                gatillo_short_10x = (
+                    d1['es_bajista'] and h4['es_bajista'] and
+                    adx_aprobado and rsi_short_valido and
+                    (h1['supertrend_sell'] or (h1['cruce_bajista'] and h1['supertrend_estado'] == "🔴 BAJISTA")) and
+                    h1['cierra_abajo_ema10']
+                )
+
+                if gatillo_short_10x:
+                    sl_tecnico = h1['resistencia'] + (1.5 * atr_act)
+                    sl_max_10x = precio_act * 1.035  # Límite máximo de 3.5% para 10X
                     sl_final = min(sl_tecnico, sl_max_10x)
                     pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
                     
@@ -411,22 +430,26 @@ def analizar_mercado():
                             'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                             'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
                             'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
-                            'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
-                            'oracle': h1['oracle_estado'],
+                            'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
+                            'supertrend': h1['supertrend_estado'],
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                # 2. ENTRADAS SNIPER SPOT (Tendencia 1W y 1D + Gatillo 4H)
+                # 2. ENTRADAS SNIPER SPOT (Tendencia 1W y 1D + Gatillo 4H con SuperTrend + Estocástico + Cierre EMA 10)
                 h4_precio = h4['precio']
                 h4_atr = h4['atr']
                 h4_rsi_valido = h4['rsi'] < 70
                 h4_adx_valido = h4['adx'] >= 26
 
-                if (w1['es_alcista'] and d1['es_alcista'] 
-                    and h4_adx_valido and h4_rsi_valido
-                    and (h4['oracle_buy'] or (h4['cruce_alcista'] and h4['oracle_estado'] == "🟢 COMPRA"))):
-                    
-                    sl_spot = min(h4_precio - (1.5 * h4_atr), h4['soporte'] * 0.990)
+                gatillo_spot = (
+                    w1['es_alcista'] and d1['es_alcista'] and
+                    h4_adx_valido and h4_rsi_valido and
+                    (h4['supertrend_buy'] or (h4['cruce_alcista'] and h4['supertrend_estado'] == "🟢 ALCISTA")) and
+                    h4['cierra_arriba_ema10']
+                )
+
+                if gatillo_spot:
+                    sl_spot = h4['soporte'] - (1.5 * h4_atr)
                     pct_sl_spot = abs((h4_precio - sl_spot) / h4_precio) * 100
                     
                     fibo_s = h4['fibo_long']
@@ -444,7 +467,7 @@ def analizar_mercado():
                             'tp1': tp1_s, 'pct_tp1': abs((tp1_s - h4_precio)/h4_precio)*100,
                             'tp2': tp2_s, 'pct_tp2': abs((tp2_s - h4_precio)/h4_precio)*100,
                             'tp3': tp3_s, 'pct_tp3': abs((tp3_s - h4_precio)/h4_precio)*100,
-                            'oracle': h4['oracle_estado'],
+                            'supertrend': h4['supertrend_estado'],
                             'rr': f"1:{(beneficio_s/riesgo_s):.1f}"
                         })
 
@@ -459,16 +482,16 @@ def analizar_mercado():
             enviar_telegram(mensaje)
             time.sleep(2.0)
 
-        enviar_lista_telegram("🟢 *TOP PERFECCIÓN ALCISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", longs_perfectos)
+        enviar_lista_telegram("🟢 *TOP PERFECCIÓN ALCISTA*", "EMA + SuperTrend + Estocástico + MFI (4H/1D/1W)", longs_perfectos)
         enviar_lista_telegram("📈 *TOP TENDENCIA ALCISTA (1D + 1S)*", "Tendencia Mayor Alcista Confirmada", longs_diario_semanal)
-        enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA + Cipher B + Oracle + MFI (4H/1D/1W)", shorts_perfectos)
+        enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA + SuperTrend + Estocástico + MFI (4H/1D/1W)", shorts_perfectos)
         enviar_lista_telegram("📉 *TOP TENDENCIA BAJISTA (1D + 1S)*", "Tendencia Mayor Bajista Confirmada", shorts_diario_semanal)
 
         if entradas_sniper:
             msj_sniper = "⚡ *ENTRADAS SNIPER 10X (Tendencia 1D/4H + Gatillo 1H)* ⚡\n\n"
             for op in entradas_sniper[:5]:
                 msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
-                msj_sniper += f"🔮 *Oracle:* `{op['oracle']}`\n"
+                msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
                 msj_sniper += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
                 msj_sniper += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
                 msj_sniper += f"🎯 *TP1 (Fibo):* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
@@ -481,7 +504,7 @@ def analizar_mercado():
             msj_spot = "🎯 *ENTRADAS SNIPER SPOT (Tendencia 1W/1D + Gatillo 4H)* 🎯\n\n"
             for op in entradas_sniper_spot[:5]:
                 msj_spot += f"🪙 *{op['symbol']}* -> *LONG SPOT 🟢* _(R:R {op['rr']})_\n"
-                msj_spot += f"🔮 *Oracle:* `{op['oracle']}`\n"
+                msj_spot += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
                 msj_spot += f"💵 *Precio Entrada:* `{op['precio']:.4f}`\n"
                 msj_spot += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}%)_\n"
                 msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}%)_\n"
@@ -515,12 +538,12 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    print("🚀 Bot iniciado correctamente sin filtro de volumen y con temporalidades ajustadas.")
+    print("🚀 Bot actualizado con SuperTrend, Estocástico Rápido, Cierre de Vela EMA 10 y Stop Loss Dinámico por ATR.")
     
     analizar_mercado()
     
     while True:
-        time.sleep(7200)
+        time.sleep(3600)
         try:
             with open(lock_file, "w") as f:
                 f.write(str(os.getpid()))
