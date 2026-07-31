@@ -481,7 +481,7 @@ def evaluar_trade_manual(ticker_raw):
 # 6. ESCANEO RÁPIDO BAJO DEMANDA (/comprobar)
 # ==========================================
 def escanear_senales_sniper_manual():
-    enviar_telegram("🔍 Escaneando todo el mercado en busca de entradas Sniper activas... (Esto puede tomar unos segundos).")
+    enviar_telegram("🔍 Escaneando todo el mercado en busca de entradas Sniper y Rangos activos... (Esto puede tomar unos segundos).")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -490,6 +490,7 @@ def escanear_senales_sniper_manual():
 
     entradas_sniper = []
     entradas_sniper_spot = []
+    entradas_rango = []
     temporalidades = ['1h', '4h', '1d', '1w']
 
     for par in pares_filtrados:
@@ -515,7 +516,26 @@ def escanear_senales_sniper_manual():
         precio_act = h1['precio']
         atr_act = h1['atr']
         
-        adx_aprobado = h1['adx'] >= 26          
+        # --- DETECCIÓN DE RANGO ---
+        senales_rango = detectar_rebote_rango_avanzado(h1, h4)
+        if senales_rango:
+            for sr in senales_rango:
+                entradas_rango.append({
+                    'symbol': simbolo_limpio,
+                    'tipo': sr['tipo'],
+                    'precio': precio_act,
+                    'sl': sr['sl'],
+                    'pct_sl': sr['pct_sl'],
+                    'tp1': sr['tp1'],
+                    'pct_tp1': sr['pct_tp1'],
+                    'tp2': sr['tp2'],
+                    'pct_tp2': sr['pct_tp2'],
+                    'tp3': sr['tp3'],
+                    'pct_tp3': sr['pct_tp3'],
+                    'rr': sr['rr']
+                })
+        
+        adx_aprobado = h1['adx'] >= 26         
         rsi_long_valido = h1['rsi'] < 70
         rsi_short_valido = h1['rsi'] > 30
 
@@ -627,10 +647,21 @@ def escanear_senales_sniper_manual():
                     'rr': f"1:{(beneficio_s/riesgo_s):.1f}"
                 })
 
-    # Respuesta al usuario
-    if not entradas_sniper and not entradas_sniper_spot:
-        enviar_telegram("❌ *NO HAY ENTRADAS SNIPER ACTIVAS*\n\nEn este momento ninguna criptomoneda del Top 150 cumple con las condiciones estrictas de la estrategia Sniper (10X o Spot). No es recomendable operar.")
+    # Respuesta al usuario en /comprobar
+    if not entradas_sniper and not entradas_sniper_spot and not entradas_rango:
+        enviar_telegram("❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones estrictas de tendencia o rangos. No es recomendable operar.")
         return
+
+    if entradas_rango:
+        msj_rango = "⚡ *REBOTES EN RANGO (Mercado Lateral) DETECTADOS:* ⚡\n\n"
+        for op in entradas_rango[:5]:
+            msj_rango += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+            msj_rango += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
+            msj_rango += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
+            msj_rango += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
+            msj_rango += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
+            msj_rango += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
+        enviar_telegram(msj_rango)
 
     if entradas_sniper:
         msj_sniper = "⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
@@ -694,7 +725,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"⏳ Evaluando estrategia Sniper (10X y Spot) para `${ticker.upper()}`...")
+                            enviar_telegram(f"⏳ Evaluando estrategia Sniper y Rangos para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("ℹ️ Indica la moneda para evaluar trade. Ejemplo: `/trade BTC` o `/trade ETH`")
@@ -735,6 +766,7 @@ def analizar_mercado():
         shorts_perfectos, shorts_diario_semanal = [], []
         entradas_sniper = []
         entradas_sniper_spot = []
+        entradas_rango = []
         
         temporalidades = ['1h', '4h', '1d', '1w']
 
@@ -781,7 +813,26 @@ def analizar_mercado():
                 precio_act = h1['precio']
                 atr_act = h1['atr']
                 
-                adx_aprobado = h1['adx'] >= 26          
+                # --- DETECCIÓN DE RANGO AUTOMÁTICA ---
+                senales_rango = detectar_rebote_rango_avanzado(h1, h4)
+                if senales_rango:
+                    for sr in senales_rango:
+                        entradas_rango.append({
+                            'symbol': simbolo_limpio,
+                            'tipo': sr['tipo'],
+                            'precio': precio_act,
+                            'sl': sr['sl'],
+                            'pct_sl': sr['pct_sl'],
+                            'tp1': sr['tp1'],
+                            'pct_tp1': sr['pct_tp1'],
+                            'tp2': sr['tp2'],
+                            'pct_tp2': sr['pct_tp2'],
+                            'tp3': sr['tp3'],
+                            'pct_tp3': sr['pct_tp3'],
+                            'rr': sr['rr']
+                        })
+                
+                adx_aprobado = h1['adx'] >= 26         
                 rsi_long_valido = h1['rsi'] < 70
                 rsi_short_valido = h1['rsi'] > 30
 
@@ -906,6 +957,17 @@ def analizar_mercado():
         enviar_lista_telegram("🔴 *TOP PERFECCIÓN BAJISTA*", "EMA + SuperTrend + Estocástico + MFI (4H/1D/1W)", shorts_perfectos)
         enviar_lista_telegram("📉 *TOP TENDENCIA BAJISTA (1D + 1S)*", "Tendencia Mayor Bajista Confirmada", shorts_diario_semanal)
 
+        if entradas_rango:
+            msj_rango = "⚡ *REBOTES EN RANGO (Mercado Lateral) DETECTADOS:* ⚡\n\n"
+            for op in entradas_rango[:5]:
+                msj_rango += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+                msj_rango += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
+                msj_rango += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
+                msj_rango += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
+                msj_rango += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
+                msj_rango += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
+            enviar_telegram(msj_rango)
+
         if entradas_sniper:
             msj_sniper = "⚡ *ENTRADAS SNIPER 10X (Tendencia 1D/4H + Gatillo 1H)* ⚡\n\n"
             for op in entradas_sniper[:5]:
@@ -913,10 +975,9 @@ def analizar_mercado():
                 msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
                 msj_sniper += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
                 msj_sniper += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
-                msj_sniper += f"🎯 *TP1 (Asegurar):* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
-                msj_sniper += f"🎯 *TP2 (Extensión):* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
-                msj_sniper += f"🎯 *TP3 (Runner):* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
-            
+                msj_sniper += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
+                msj_sniper += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
+                msj_sniper += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
             enviar_telegram(msj_sniper)
 
         if entradas_sniper_spot:
@@ -930,7 +991,7 @@ def analizar_mercado():
                 msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}%)_\n"
                 msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}%)_\n\n"
             
-            msj_spot += "💡 _Comandos útiles:_\n• `/analizar BTC`\n• `/trade BTC`\n• `/comprobar` (Escaneo general Sniper bajo demanda)"
+            msj_spot += "💡 _Comandos útiles:_\n• `/analizar BTC`\n• `/trade BTC`\n• `/comprobar` (Escaneo general Sniper y Rangos bajo demanda)"
             enviar_telegram(msj_spot)
 
         print("✅ Escaneo completado.")
@@ -957,7 +1018,7 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    print("🚀 Bot actualizado con comando /comprobar para escanear entradas Sniper al instante.")
+    print("🚀 Bot actualizado con detección automática de Rangos y comando /comprobar.")
     
     analizar_mercado()
     
