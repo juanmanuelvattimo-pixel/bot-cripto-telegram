@@ -80,7 +80,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# MÓDULO: REBOTE DE RANGO (CORREGIDO)
+# NUEVO MÓDULO: REBOTE DE RANGO (CORREGIDO)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
@@ -247,7 +247,7 @@ def analizar_par_completo(symbol, timeframe):
             'supertrend_buy': supertrend_buy,
             'supertrend_sell': supertrend_sell,
             'supertrend_estado': "🟢 ALCISTA" if st_dir == 1 else "🔴 BAJISTA",
-            'stoch_estado': "🟢 COMPRA" if st_dx > stoch_d else "🔴 VENTA", # se mantiene dinámico
+            'stoch_estado': "🟢 COMPRA" if stoch_k > stoch_d else "🔴 VENTA",
             'cierra_arriba_ema10': precio > df['ema10'].iloc[-1],
             'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
             'soporte': soporte_key,
@@ -259,42 +259,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# 5. FUNCIONES AUXILIARES DE ESTADO DE BTC
-# ==========================================
-def generar_encabezado_btc(titulo_personalizado="🤖 **REPORTE DE MERCADO CADA 2 HORAS ✅**"):
-    try:
-        symbol_btc = "BTC/USDT"
-        temporalidades = ['1h', '4h', '1d', '1w']
-        analisis_btc = {}
-        
-        for tf in temporalidades:
-            res_tf = analizar_par_completo(symbol_btc, tf)
-            if res_tf:
-                analisis_btc[tf] = res_tf
-                
-        if '1h' in analisis_btc:
-            precio_btc = analisis_btc['1h']['precio']
-            msj = f"{titulo_personalizado}\n\n"
-            msj += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{precio_btc:.2f}` USDT\n\n"
-            msj += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
-            
-            for tf in temporalidades:
-                if tf in analisis_btc:
-                    data = analisis_btc[tf]
-                    tendencia = data['supertrend_estado']
-                    rsi_val = data['rsi']
-                    adx_val = data['adx']
-                    fuerza_adx = data['adx_fuerza']
-                    
-                    msj += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | ADX: `{adx_val:.1f}` ({fuerza_adx})\n"
-            msj += "\n-----------------------------------\n\n"
-            return msj
-    except Exception:
-        pass
-    return f"{titulo_personalizado}\n\n"
-
-# ==========================================
-# 6. FUNCIONES DE ESCANEO / CONSULTA MANUAL
+# 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
 def obtener_pares_top():
     try:
@@ -315,6 +280,28 @@ def obtener_pares_top():
     except Exception:
         return []
 
+def analizar_cripto_individual(ticker_raw):
+    """Función añadida para dar soporte al comando /analizar en Telegram"""
+    ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
+    simbolo_limpio = ticker.split('/')[0]
+    
+    temporalidades = ['1h', '4h', '1d', '1w']
+    msj = f"🤖 **BOT ACTIVO ✅**\n\n📊 *ANÁLISIS TÉCNICO DETALLADO: ${simbolo_limpio}*\n\n"
+    
+    for tf in temporalidades:
+        res = analizar_par_completo(ticker, tf)
+        if res is not None:
+            msj += f"• *Temporalidad {tf.upper()}*:\n"
+            msj += f"  - Precio: `{res['precio']:.4f}`\n"
+            msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
+            msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
+            msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
+            msj += f"  - Soporte: `{res['soporte']:.4f}` | Resistencia: `{res['resistencia']:.4f}`\n\n"
+        else:
+            msj += f"• *Temporalidad {tf.upper()}*: Sin datos suficientes.\n\n"
+            
+    enviar_telegram(msj)
+
 def evaluar_trade_manual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     simbolo_limpio = ticker.split('/')[0]
@@ -325,7 +312,7 @@ def evaluar_trade_manual(ticker_raw):
     for tf in temporalidades:
         res = analizar_par_completo(ticker, tf)
         if res is None:
-            enviar_telegram(f"❌ No se pudo encontrar o analizar la cripto `{ticker_raw}` en BingX.")
+            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n❌ No se pudo encontrar o analizar la cripto `{ticker_raw}` en BingX.")
             return
         analisis_tf[tf] = res
 
@@ -364,7 +351,7 @@ def evaluar_trade_manual(ticker_raw):
         h4['cierra_arriba_ema10']
     )
 
-    msj = f"🎯 *EVALUACIÓN MANUAL DE TRADE: ${simbolo_limpio}*\n\n"
+    msj = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN MANUAL DE TRADE: ${simbolo_limpio}*\n\n"
 
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.5 * atr_act)
@@ -460,14 +447,14 @@ def evaluar_trade_manual(ticker_raw):
     enviar_telegram(msj)
 
 # ==========================================
-# 7. ESCANEO RÁPIDO BAJO DEMANDA (/comprobar)
+# 6. ESCANEO RÁPIDO BAJO DEMANDA (/comprobar)
 # ==========================================
 def escanear_senales_sniper_manual():
-    enviar_telegram("🔍 Escaneando todo el mercado en busca de entradas Sniper y Rangos activos...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado en busca de entradas Sniper y Rangos activos...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
-        enviar_telegram("❌ Error al obtener los pares del mercado en este momento.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ Error al obtener los pares del mercado en este momento.")
         return
 
     entradas_sniper = []
@@ -579,8 +566,8 @@ def escanear_senales_sniper_manual():
                         'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                         'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                         'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                        'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
-                        'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
+                        'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
+                        'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
                         'supertrend': h1['supertrend_estado'],
                         'rr': f"1:{(beneficio/riesgo):.1f}"
                     })
@@ -624,11 +611,11 @@ def escanear_senales_sniper_manual():
                     })
 
     if not entradas_sniper and not entradas_sniper_spot and not entradas_rango:
-        enviar_telegram("❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones estrictas de tendencia o rangos.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones estrictas de tendencia o rangos.")
         return
 
     if entradas_rango:
-        msj_rango = "⚡ *REBOTES EN RANGO DETECTADOS:* ⚡\n\n"
+        msj_rango = "🤖 **BOT ACTIVO ✅**\n\n⚡ *REBOTES EN RANGO DETECTADOS:* ⚡\n\n"
         for op in entradas_rango[:5]:
             msj_rango += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_rango += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
@@ -639,7 +626,7 @@ def escanear_senales_sniper_manual():
         enviar_telegram(msj_rango)
 
     if entradas_sniper:
-        msj_sniper = "⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
+        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
         for op in entradas_sniper[:5]:
             msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
@@ -651,19 +638,19 @@ def escanear_senales_sniper_manual():
         enviar_telegram(msj_sniper)
 
     if entradas_sniper_spot:
-        msj_spot = "🎯 *ENTRADAS SNIPER SPOT DETECTADAS:* 🎯\n\n"
+        msj_spot = "🤖 **BOT ACTIVO ✅**\n\n🎯 *ENTRADAS SNIPER SPOT DETECTADAS:* 🎯\n\n"
         for op in entradas_sniper_spot[:5]:
             msj_spot += f"🪙 *{op['symbol']}* -> *LONG SPOT 🟢* _(R:R {op['rr']})_\n"
             msj_spot += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
             msj_spot += f"💵 *Precio Entrada:* `{op['precio']:.4f}`\n"
             msj_spot += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}%)_\n"
-            msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}%)_\n"
-            msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}%)_\n"
-            msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}%)_\n\n"
+            msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{abs((op['tp1'] - op['precio'])/op['precio'])*100:.1f}%)_\n"
+            msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{abs((op['tp2'] - op['precio'])/op['precio'])*100:.1f}%)_\n"
+            msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{abs((op['tp3'] - op['precio'])/op['precio'])*100:.1f}%)_\n\n"
         enviar_telegram(msj_spot)
 
 # ==========================================
-# 8. ESCUCHADOR DE TELEGRAM BLINDADO
+# 7. ESCUCHADOR DE TELEGRAM BLINDADO
 # ==========================================
 def escuchar_mensajes_telegram():
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -687,14 +674,23 @@ def escuchar_mensajes_telegram():
                     message = result.get("message", {})
                     text = message.get("text", "").strip()
                     
-                    if text.startswith("/analizar") or text.startswith("/trade"):
+                    if text.startswith("/analizar"):
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"⏳ Realizando análisis exhaustivo para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Realizando análisis exhaustivo para `${ticker.upper()}`...")
+                            analizar_cripto_individual(ticker)
+                        else:
+                            enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/analizar BTC`")
+                            
+                    elif text.startswith("/trade"):
+                        partes = text.split()
+                        if len(partes) > 1:
+                            ticker = partes[1]
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia Sniper y Rangos para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
-                            enviar_telegram("ℹ️ Indica la moneda. Ejemplo: `/analizar BTC`")
+                            enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
 
                     elif text.startswith("/comprobar") or text.startswith("/senales"):
                         hilo_comprobar = threading.Thread(target=escanear_senales_sniper_manual, daemon=True)
@@ -704,7 +700,7 @@ def escuchar_mensajes_telegram():
         time.sleep(1)
 
 # ==========================================
-# 9. ESCANEO Y CLASIFICACIÓN GENERAL (CADA 2 HORAS)
+# 8. ESCANEO Y CLASIFICACIÓN GENERAL (CADA 2 HORAS)
 # ==========================================
 ARCHIVO_BLOQUEO = "ultimo_escaneo.txt"
 
@@ -722,15 +718,13 @@ def analizar_mercado():
 
     print("🔎 Escaneando mercado...")
     
-    # 🟢 Envía el encabezado de "Bot Activado" / Reporte de BTC antes de lanzar las señales de las 2 horas
-    encabezado_msj = generar_encabezado_btc(titulo_personalizado="🤖 **REPORTE DE MERCADO CADA 2 HORAS ✅**")
-    enviar_telegram(encabezado_msj)
-
     try:
         pares_filtrados = obtener_pares_top()
         if not pares_filtrados:
             return
             
+        longs_perfectos, longs_diario_semanal = [], []
+        shorts_perfectos, shorts_diario_semanal = [], []
         entradas_sniper = []
         entradas_sniper_spot = []
         entradas_rango = []
@@ -751,6 +745,27 @@ def analizar_mercado():
             if es_valido:
                 simbolo_limpio = par.split('/')[0]
                 
+                estados = {
+                    tf: "🟢" if analisis_tf[tf]['es_alcista'] else ("🔴" if analisis_tf[tf]['es_bajista'] else "⚪")
+                    for tf in temporalidades
+                }
+                
+                datos_par = {
+                    'symbol': simbolo_limpio,
+                    '1h': estados['1h'], '4h': estados['4h'], 
+                    '1d': estados['1d'], '1w': estados['1w']
+                }
+                
+                if all(v == "🟢" for v in estados.values()):
+                    longs_perfectos.append(datos_par)
+                elif estados['1d'] == "🟢" and estados['1w'] == "🟢":
+                    longs_diario_semanal.append(datos_par)
+
+                if all(v == "🔴" for v in estados.values()):
+                    shorts_perfectos.append(datos_par)
+                elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
+                    shorts_diario_semanal.append(datos_par)
+
                 h1 = analisis_tf['1h']
                 h4 = analisis_tf['4h']
                 d1 = analisis_tf['1d']
@@ -878,7 +893,7 @@ def analizar_mercado():
                         })
 
         if entradas_rango:
-            msj_rango = "⚡ *REBOTES EN RANGO DETECTADOS:* ⚡\n\n"
+            msj_rango = "🤖 **BOT ACTIVO ✅**\n\n⚡ *REBOTES EN RANGO DETECTADOS:* ⚡\n\n"
             for op in entradas_rango[:5]:
                 msj_rango += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
                 msj_rango += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
@@ -889,7 +904,7 @@ def analizar_mercado():
             enviar_telegram(msj_rango)
 
         if entradas_sniper:
-            msj_sniper = "⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
+            msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
             for op in entradas_sniper[:5]:
                 msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
                 msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
@@ -901,15 +916,15 @@ def analizar_mercado():
             enviar_telegram(msj_sniper)
 
         if entradas_sniper_spot:
-            msj_spot = "🎯 *ENTRADAS SNIPER SPOT DETECTADAS:* 🎯\n\n"
+            msj_spot = "🤖 **BOT ACTIVO ✅**\n\n🎯 *ENTRADAS SNIPER SPOT DETECTADAS:* 🎯\n\n"
             for op in entradas_sniper_spot[:5]:
                 msj_spot += f"🪙 *{op['symbol']}* -> *LONG SPOT 🟢* _(R:R {op['rr']})_\n"
                 msj_spot += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
                 msj_spot += f"💵 *Precio Entrada:* `{op['precio']:.4f}`\n"
                 msj_spot += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}%)_\n"
-                msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{op['pct_tp1']:.1f}%)_\n"
-                msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{op['pct_tp2']:.1f}%)_\n"
-                msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{op['pct_tp3']:.1f}%)_\n\n"
+                msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}` _(+{abs((op['tp1'] - op['precio'])/op['precio'])*100:.1f}%)_\n"
+                msj_spot += f"🎯 *TP2:* `{op['tp2']:.4f}` _(+{abs((op['tp2'] - op['precio'])/op['precio'])*100:.1f}%)_\n"
+                msj_spot += f"🎯 *TP3:* `{op['tp3']:.4f}` _(+{abs((op['tp3'] - op['precio'])/op['precio'])*100:.1f}%)_\n\n"
             enviar_telegram(msj_spot)
 
         print("✅ Escaneo completado.")
@@ -918,7 +933,7 @@ def analizar_mercado():
         print(f"Error en el escaneo general: {e}")
 
 # ==========================================
-# 10. BUCLE PRINCIPAL
+# 9. BUCLE PRINCIPAL
 # ==========================================
 if __name__ == "__main__":
     lock_file = "app.lock"
@@ -935,9 +950,37 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    # 🟢 Mensaje inicial de activación al arrancar el script por primera vez
-    msj_inicio_script = generar_encabezado_btc(titulo_personalizado="🤖 **BOT ACTIVADO ✅**")
-    enviar_telegram(msj_inicio_script)
+    try:
+        symbol_btc = "BTC/USDT"
+        temporalidades = ['1h', '4h', '1d', '1w']
+        analisis_btc = {}
+        
+        for tf in temporalidades:
+            res_tf = analizar_par_completo(symbol_btc, tf)
+            if res_tf:
+                analisis_btc[tf] = res_tf
+                
+        if '1h' in analisis_btc:
+            precio_btc = analisis_btc['1h']['precio']
+            msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
+            msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{precio_btc:.2f}` USDT\n\n"
+            msj_inicio += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
+            
+            for tf in temporalidades:
+                if tf in analisis_btc:
+                    data = analisis_btc[tf]
+                    tendencia = data['supertrend_estado']
+                    rsi_val = data['rsi']
+                    adx_val = data['adx']
+                    fuerza_adx = data['adx_fuerza']
+                    
+                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | ADX: `{adx_val:.1f}` ({fuerza_adx})\n"
+            
+            enviar_telegram(msj_inicio)
+        else:
+            enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente, pero no se pudo obtener el análisis preliminar de BTC.")
+    except Exception as e:
+        enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
     print("🚀 Bot actualizado y listo para enviar alertas de Rangos, Sniper 10X y Spot con Take Profits incluidos.")
     
