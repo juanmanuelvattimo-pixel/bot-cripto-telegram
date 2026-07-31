@@ -689,6 +689,103 @@ def escanear_senales_sniper_manual():
         enviar_telegram(msj_spot)
 
 # ==========================================
+
+# 7. ESCUCHADOR DE TELEGRAM BLINDADO
+
+# ==========================================
+
+def escuchar_mensajes_telegram():
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+
+    offset = None
+
+    
+
+    try:
+
+        init_resp = requests.get(url, params={"timeout": 1}, timeout=5).json()
+
+        if init_resp.get("ok") and init_resp.get("result"):
+
+            offset = init_resp["result"][-1]["update_id"] + 1
+
+    except Exception:
+
+        pass
+
+
+
+    while True:
+
+        try:
+
+            params = {"timeout": 15, "offset": offset}
+
+            resp = requests.get(url, params=params, timeout=20).json()
+
+            
+
+            if resp.get("ok"):
+
+                for result in resp.get("result", []):
+
+                    offset = result["update_id"] + 1
+
+                    message = result.get("message", {})
+
+                    text = message.get("text", "").strip()
+
+                    
+
+                    if text.startswith("/analizar"):
+
+                        partes = text.split()
+
+                        if len(partes) > 1:
+
+                            ticker = partes[1]
+
+                            enviar_telegram(f"⏳ Realizando análisis exhaustivo para `${ticker.upper()}`...")
+
+                            analizar_cripto_individual(ticker)
+
+                        else:
+
+                            enviar_telegram("ℹ️ Indica la moneda. Ejemplo: `/analizar BTC` o `/analizar SOL`")
+
+                            
+
+                    elif text.startswith("/trade"):
+
+                        partes = text.split()
+
+                        if len(partes) > 1:
+
+                            ticker = partes[1]
+
+                            enviar_telegram(f"⏳ Evaluando estrategia Sniper y Rangos para `${ticker.upper()}`...")
+
+                            evaluar_trade_manual(ticker)
+
+                        else:
+
+                            enviar_telegram("ℹ️ Indica la moneda para evaluar trade. Ejemplo: `/trade BTC` o `/trade ETH`")
+
+
+
+                    elif text.startswith("/comprobar") or text.startswith("/senales"):
+
+                        hilo_comprobar = threading.Thread(target=escanear_senales_sniper_manual, daemon=True)
+
+                        hilo_comprobar.start()
+
+        except Exception:
+
+            pass
+
+        time.sleep(1)
+# ==========================================
 # 7. ESCANEO AUTOMÁTICO DE FONDO (LOOP)
 # ==========================================
 def analizar_mercado():
