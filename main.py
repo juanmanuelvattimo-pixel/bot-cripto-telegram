@@ -116,34 +116,57 @@ def detectar_rebote_rango_avanzado(df_15m, df_4h=None):
             if ultimo[col_close] >= ultimo['upper_band'] and tendencia_alcista_macro:
                 return None
 
+    precio_entrada = ultimo[col_close]
+    
     if ultimo[col_close] <= ultimo['lower_band'] and ultimo['rsi'] < 30:
-        precio_entrada = ultimo[col_close]
         stop_loss = precio_entrada * 0.985
-        take_profit = ultimo['middle_band']
+        tp1 = ultimo['middle_band']
+        tp2 = tp1 * 1.01
+        tp3 = tp1 * 1.02
         
-        return {
-            "Señal": "LONG (Rebote de Rango 15m/1H - 10x)",
-            "Precio": precio_entrada,
-            "Stop Loss": stop_loss,
-            "Take Profit": take_profit,
-            "Riesgo": "Fijo 1.5% con Filtro Macro, Cierre y Volumen"
-        }
+        riesgo = precio_entrada - stop_loss
+        beneficio = tp1 - precio_entrada
+        rr_val = f"1:{(beneficio/riesgo):.1f}" if riesgo > 0 else "1:1"
+
+        # Retornamos una LISTA con un diccionario adaptado exactamente a lo que pide la segunda parte
+        return [{
+            'tipo': 'LONG RANGO 🟢',
+            'sl': stop_loss,
+            'pct_sl': 1.5, # 1.5% real (15% a 10x)
+            'tp1': tp1,
+            'pct_tp1': abs((tp1 - precio_entrada)/precio_entrada)*100*10,
+            'tp2': tp2,
+            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'tp3': tp3,
+            'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
+            'rr': rr_val
+        }]
         
     if ultimo[col_close] >= ultimo['upper_band'] and ultimo['rsi'] > 70:
-        precio_entrada = ultimo[col_close]
         stop_loss = precio_entrada * 1.015
-        take_profit = ultimo['middle_band']
+        tp1 = ultimo['middle_band']
+        tp2 = tp1 * 0.99
+        tp3 = tp1 * 0.98
         
-        return {
-            "Señal": "SHORT (Rebote de Rango 15m/1H - 10x)",
-            "Precio": precio_entrada,
-            "Stop Loss": stop_loss,
-            "Take Profit": take_profit,
-            "Riesgo": "Fijo 1.5% con Filtro Macro, Cierre y Volumen"
-        }
+        riesgo = stop_loss - precio_entrada
+        beneficio = precio_entrada - tp1
+        rr_val = f"1:{(beneficio/riesgo):.1f}" if riesgo > 0 else "1:1"
+
+        # Retornamos una LISTA con un diccionario adaptado exactamente a lo que pide la segunda parte
+        return [{
+            'tipo': 'SHORT RANGO 🔴',
+            'sl': stop_loss,
+            'pct_sl': 1.5, # 1.5% real (15% a 10x)
+            'tp1': tp1,
+            'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
+            'tp2': tp2,
+            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
+            'tp3': tp3,
+            'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
+            'rr': rr_val
+        }]
         
     return None
-
 # ==========================================
 # 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
 # ==========================================
