@@ -84,41 +84,22 @@ def calcular_soportes_resistencias(df, precio_actual):
 # ==========================================
 def detectar_rebote_rango_avanzado(df_15m, df_4h=None):
     """
-    Módulo paralelo optimizado para 15m/1H con:
-    - Filtro de ADX y Volumen (Rango limpio)
-    - Confirmación de Cierre de Vela
-    - Filtro de Tendencia Macro (4H)
-    - Stop Loss Fijo del 1.5% (15% de riesgo a 10x)
+    Versión de prueba con filtros relajados para verificar alertas.
     """
     if len(df_15m) < 30:
         return None
 
     ultimo = df_15m.iloc[-1]
     
-    if ultimo['ADX'] > 22:
-        return None
-    
-    col_volumen = 'volume' if 'volume' in df_15m.columns else 'Volume'
-    volumen_promedio = df_15m[col_volumen].rolling(window=20).mean().iloc[-1]
-    if ultimo[col_volumen] > (volumen_promedio * 1.5):
+    # Filtros relajados para prueba (ADX más alto y sin filtro estricto de volumen inicial)
+    if ultimo['ADX'] > 35:
         return None
         
     col_close = 'close' if 'close' in df_15m.columns else 'Close'
-    
-    if df_4h is not None and len(df_4h) > 0:
-        ultimo_4h = df_4h.iloc[-1]
-        if 'ema50' in ultimo_4h and 'ema200' in ultimo_4h:
-            tendencia_bajista_macro = ultimo_4h['ema50'] < ultimo_4h['ema200']
-            tendencia_alcista_macro = ultimo_4h['ema50'] > ultimo_4h['ema200']
-            
-            if ultimo[col_close] <= ultimo['lower_band'] and tendencia_bajista_macro:
-                return None
-            if ultimo[col_close] >= ultimo['upper_band'] and tendencia_alcista_macro:
-                return None
-
     precio_entrada = ultimo[col_close]
     
-    if ultimo[col_close] <= ultimo['lower_band'] and ultimo['rsi'] < 30:
+    # RSI relajado (< 50 para Long, > 50 para Short) para asegurar que salten alertas rápido
+    if ultimo['rsi'] < 50:
         stop_loss = precio_entrada * 0.985
         tp1 = ultimo['middle_band']
         tp2 = tp1 * 1.01
@@ -128,11 +109,10 @@ def detectar_rebote_rango_avanzado(df_15m, df_4h=None):
         beneficio = tp1 - precio_entrada
         rr_val = f"1:{(beneficio/riesgo):.1f}" if riesgo > 0 else "1:1"
 
-        # Retornamos una LISTA con un diccionario adaptado exactamente a lo que pide la segunda parte
         return [{
-            'tipo': 'LONG RANGO 🟢',
+            'tipo': 'LONG RANGO 🟢 (PRUEBA)',
             'sl': stop_loss,
-            'pct_sl': 1.5, # 1.5% real (15% a 10x)
+            'pct_sl': 1.5,
             'tp1': tp1,
             'pct_tp1': abs((tp1 - precio_entrada)/precio_entrada)*100*10,
             'tp2': tp2,
@@ -142,7 +122,7 @@ def detectar_rebote_rango_avanzado(df_15m, df_4h=None):
             'rr': rr_val
         }]
         
-    if ultimo[col_close] >= ultimo['upper_band'] and ultimo['rsi'] > 70:
+    if ultimo['rsi'] > 50:
         stop_loss = precio_entrada * 1.015
         tp1 = ultimo['middle_band']
         tp2 = tp1 * 0.99
@@ -152,17 +132,16 @@ def detectar_rebote_rango_avanzado(df_15m, df_4h=None):
         beneficio = precio_entrada - tp1
         rr_val = f"1:{(beneficio/riesgo):.1f}" if riesgo > 0 else "1:1"
 
-        # Retornamos una LISTA con un diccionario adaptado exactamente a lo que pide la segunda parte
         return [{
-            'tipo': 'SHORT RANGO 🔴',
+            'tipo': 'SHORT 🔴 (PRUEBA)',
             'sl': stop_loss,
-            'pct_sl': 1.5, # 1.5% real (15% a 10x)
+            'pct_sl': 1.5,
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
+            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3,
-            'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
+            'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
             'rr': rr_val
         }]
         
