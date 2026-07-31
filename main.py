@@ -937,6 +937,39 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
+    # 🟢 Mensaje de activación con estado de BTC en las 4 temporalidades
+    try:
+        symbol_btc = "BTC/USDT"
+        temporalidades = ['1h', '4h', '1d', '1w']
+        analisis_btc = {}
+        
+        for tf in temporalidades:
+            res_tf = analizar_par_completo(symbol_btc, tf)
+            if res_tf:
+                analisis_btc[tf] = res_tf
+                
+        if '1h' in analisis_btc:
+            precio_btc = analisis_btc['1h']['precio']
+            msj_inicio = f"🤖 **BOT ACTIVADO ✅**\n\n"
+            msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{precio_btc:.2f}` USDT\n\n"
+            msj_inicio += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
+            
+            for tf in temporalidades:
+                if tf in analisis_btc:
+                    data = analisis_btc[tf]
+                    tendencia = data['supertrend_estado']
+                    rsi_val = data['rsi']
+                    adx_val = data['adx']
+                    fuerza_adx = data['adx_fuerza']
+                    
+                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | ADX: `{adx_val:.1f}` ({fuerza_adx})\n"
+            
+            enviar_telegram(msj_inicio)
+        else:
+            enviar_telegram("🤖 **BOT ACTIVADO ✅**\n\nEl bot se ha iniciado correctamente, pero no se pudo obtener el análisis preliminar de BTC.")
+    except Exception as e:
+        enviar_telegram(f"🤖 **BOT ACTIVADO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
+
     print("🚀 Bot actualizado y listo para enviar alertas de Rangos, Sniper 10X y Spot con Take Profits incluidos.")
     
     analizar_mercado()
@@ -949,3 +982,5 @@ if __name__ == "__main__":
         except Exception:
             pass
         analizar_mercado()
+    
+   
