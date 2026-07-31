@@ -281,7 +281,7 @@ def obtener_pares_top():
         return []
 
 def analizar_cripto_individual(ticker_raw):
-    """Función añadida para dar soporte al comando /analizar en Telegram"""
+    """Función para dar soporte al comando /analizar en Telegram (mantiene reporte semanal)"""
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     simbolo_limpio = ticker.split('/')[0]
     
@@ -342,13 +342,16 @@ def evaluar_trade_manual(ticker_raw):
         h1['cierra_abajo_ema10']
     )
 
+    # NUEVA CONDICIÓN SNIPER SPOT: Tendencia Diaria (d1), Evaluación 4H (h4), Gatillo 1H (h1)
     h4_rsi_valido = h4['rsi'] < 70
     h4_adx_valido = h4['adx'] >= 26
+    h1_rsi_valido = h1['rsi'] < 70
+    h1_adx_valido = h1['adx'] >= 26
+
     gatillo_spot = (
-        w1['es_alcista'] and d1['es_alcista'] and
-        h4_adx_valido and h4_rsi_valido and
-        (h4['supertrend_estado'] == "🟢 ALCISTA") and
-        h4['cierra_arriba_ema10']
+        d1['es_alcista'] and
+        h4_adx_valido and h4_rsi_valido and (h4['supertrend_estado'] == "🟢 ALCISTA") and
+        h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10']
     )
 
     msj = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN MANUAL DE TRADE: ${simbolo_limpio}*\n\n"
@@ -407,30 +410,28 @@ def evaluar_trade_manual(ticker_raw):
     else:
         msj += "⚪ *SNIPER 10X SHORT:* No cumple con todas las reglas actuales.\n\n"
 
-    h4_precio = h4['precio']
-    h4_atr = h4['atr']
     if gatillo_spot:
-        sl_spot = h4['soporte'] - (1.5 * h4_atr)
-        pct_sl_spot = abs((h4_precio - sl_spot) / h4_precio) * 100
+        sl_spot = h1['soporte'] - (1.5 * atr_act)
+        pct_sl_spot = abs((precio_act - sl_spot) / precio_act) * 100
         
-        resistencia_spot = h4['resistencia'] if h4['resistencia'] > h4_precio else (h4_precio + (h4_atr * 4))
-        fibo_s = h4['fibo_long']
+        resistencia_spot = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 4))
+        fibo_s = h1['fibo_long']
         
-        tp1_s = min(resistencia_spot, max(fibo_s['tp1'], h4_precio + (h4_atr * 2)))
+        tp1_s = min(resistencia_spot, max(fibo_s['tp1'], precio_act + (atr_act * 2)))
         tp2_s = max(fibo_s['tp2'], tp1_s * 1.02)
         tp3_s = max(fibo_s['tp3'], tp2_s * 1.02)
 
-        riesgo_s = h4_precio - sl_spot
-        beneficio_s = tp1_s - h4_precio
+        riesgo_s = precio_act - sl_spot
+        beneficio_s = tp1_s - precio_act
         
         if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
             msj += f"🎯 *ESTRATEGIA SNIPER SPOT: APROBADA* _(R:R 1:{(beneficio_s/riesgo_s):.1f})_\n"
-            msj += f"🔮 *SuperTrend (4H):* `{h4['supertrend_estado']}`\n"
-            msj += f"💵 *Precio Entrada:* `{h4_precio:.4f}`\n"
+            msj += f"🔮 *SuperTrend (1H):* `{h1['supertrend_estado']}`\n"
+            msj += f"💵 *Precio Entrada:* `{precio_act:.4f}`\n"
             msj += f"🛑 *Stop Loss:* `{sl_spot:.4f}` _(-{pct_sl_spot:.1f}%)_\n"
-            msj += f"🎯 *TP1:* `{tp1_s:.4f}` _(+{abs((tp1_s - h4_precio)/h4_precio)*100:.1f}%)_\n"
-            msj += f"🎯 *TP2:* `{tp2_s:.4f}` _(+{abs((tp2_s - h4_precio)/h4_precio)*100:.1f}%)_\n"
-            msj += f"🎯 *TP3:* `{tp3_s:.4f}` _(+{abs((tp3_s - h4_precio)/h4_precio)*100:.1f}%)_\n"
+            msj += f"🎯 *TP1:* `{tp1_s:.4f}` _(+{abs((tp1_s - precio_act)/precio_act)*100:.1f}%)_\n"
+            msj += f"🎯 *TP2:* `{tp2_s:.4f}` _(+{abs((tp2_s - precio_act)/precio_act)*100:.1f}%)_\n"
+            msj += f"🎯 *TP3:* `{tp3_s:.4f}` _(+{abs((tp3_s - precio_act)/precio_act)*100:.1f}%)_\n"
     else:
         msj += "⚪ *SNIPER SPOT:* No califica para trade en este momento.\n"
 
@@ -469,14 +470,13 @@ def escanear_senales_sniper_manual():
             if res is not None:
                 analisis_tf[tf] = res
         
-        if '1h' not in analisis_tf or '4h' not in analisis_tf:
+        if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
             continue
             
         simbolo_limpio = par.split('/')[0]
         h1 = analisis_tf['1h']
         h4 = analisis_tf['4h']
-        d1 = analisis_tf.get('1d')
-        w1 = analisis_tf.get('1w')
+        d1 = analisis_tf['1d']
         
         precio_act = h1['precio']
         atr_act = h1['atr']
@@ -566,47 +566,46 @@ def escanear_senales_sniper_manual():
                         'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                         'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                         'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                        'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
-                        'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
+                        'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                        'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                         'supertrend': h1['supertrend_estado'],
                         'rr': f"1:{(beneficio/riesgo):.1f}"
                     })
 
-        if w1 is not None and d1 is not None:
-            h4_precio = h4['precio']
-            h4_atr = h4['atr']
+        if d1 is not None:
             h4_rsi_valido = h4['rsi'] < 70
             h4_adx_valido = h4['adx'] >= 26
+            h1_rsi_valido = h1['rsi'] < 70
+            h1_adx_valido = h1['adx'] >= 26
 
             gatillo_spot = (
-                w1['es_alcista'] and d1['es_alcista'] and
-                h4_adx_valido and h4_rsi_valido and
-                (h4['supertrend_estado'] == "🟢 ALCISTA") and
-                h4['cierra_arriba_ema10']
+                d1['es_alcista'] and
+                h4_adx_valido and h4_rsi_valido and (h4['supertrend_estado'] == "🟢 ALCISTA") and
+                h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10']
             )
 
             if gatillo_spot:
-                sl_spot = h4['soporte'] - (1.5 * h4_atr)
-                pct_sl_spot = abs((h4_precio - sl_spot) / h4_precio) * 100
+                sl_spot = h1['soporte'] - (1.5 * atr_act)
+                pct_sl_spot = abs((precio_act - sl_spot) / precio_act) * 100
                 
-                resistencia_spot = h4['resistencia'] if h4['resistencia'] > h4_precio else (h4_precio + (h4_atr * 4))
-                fibo_s = h4['fibo_long']
+                resistencia_spot = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 4))
+                fibo_s = h1['fibo_long']
                 
-                tp1_s = min(resistencia_spot, max(fibo_s['tp1'], h4_precio + (h4_atr * 2)))
+                tp1_s = min(resistencia_spot, max(fibo_s['tp1'], precio_act + (atr_act * 2)))
                 tp2_s = max(fibo_s['tp2'], tp1_s * 1.02)
                 tp3_s = max(fibo_s['tp3'], tp2_s * 1.02)
 
-                riesgo_s = h4_precio - sl_spot
-                beneficio_s = tp1_s - h4_precio
+                riesgo_s = precio_act - sl_spot
+                beneficio_s = tp1_s - precio_act
                 
                 if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
                     entradas_sniper_spot.append({
                         'symbol': simbolo_limpio,
-                        'precio': h4_precio, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
-                        'tp1': tp1_s, 'pct_tp1': abs((tp1_s - h4_precio)/h4_precio)*100,
-                        'tp2': tp2_s, 'pct_tp2': abs((tp2_s - h4_precio)/h4_precio)*100,
-                        'tp3': tp3_s, 'pct_tp3': abs((tp3_s - h4_precio)/h4_precio)*100,
-                        'supertrend': h4['supertrend_estado'],
+                        'precio': precio_act, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
+                        'tp1': tp1_s, 'pct_tp1': abs((tp1_s - precio_act)/precio_act)*100,
+                        'tp2': tp2_s, 'pct_tp2': abs((tp2_s - precio_act)/precio_act)*100,
+                        'tp3': tp3_s, 'pct_tp3': abs((tp3_s - precio_act)/precio_act)*100,
+                        'supertrend': h1['supertrend_estado'],
                         'rr': f"1:{(beneficio_s/riesgo_s):.1f}"
                     })
 
@@ -769,7 +768,6 @@ def analizar_mercado():
                 h1 = analisis_tf['1h']
                 h4 = analisis_tf['4h']
                 d1 = analisis_tf['1d']
-                w1 = analisis_tf['1w']
                 
                 precio_act = h1['precio']
                 atr_act = h1['atr']
@@ -856,39 +854,38 @@ def analizar_mercado():
                             'rr': f"1:{(beneficio/riesgo):.1f}"
                         })
 
-                h4_precio = h4['precio']
-                h4_atr = h4['atr']
                 h4_rsi_valido = h4['rsi'] < 70
                 h4_adx_valido = h4['adx'] >= 26
+                h1_rsi_valido = h1['rsi'] < 70
+                h1_adx_valido = h1['adx'] >= 26
 
                 gatillo_spot = (
-                    w1['es_alcista'] and d1['es_alcista'] and
-                    h4_adx_valido and h4_rsi_valido and
-                    (h4['supertrend_estado'] == "🟢 ALCISTA") and
-                    h4['cierra_arriba_ema10']
+                    d1['es_alcista'] and
+                    h4_adx_valido and h4_rsi_valido and (h4['supertrend_estado'] == "🟢 ALCISTA") and
+                    h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10']
                 )
 
                 if gatillo_spot:
-                    sl_spot = h4['soporte'] - (1.5 * h4_atr)
-                    pct_sl_spot = abs((h4_precio - sl_spot) / h4_precio) * 100
+                    sl_spot = h1['soporte'] - (1.5 * atr_act)
+                    pct_sl_spot = abs((precio_act - sl_spot) / precio_act) * 100
                     
-                    resistencia_spot = h4['resistencia'] if h4['resistencia'] > h4_precio else (h4_precio + (h4_atr * 4))
-                    fibo_s = h4['fibo_long']
-                    tp1_s = min(resistencia_spot, max(fibo_s['tp1'], h4_precio + (h4_atr * 2)))
+                    resistencia_spot = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 4))
+                    fibo_s = h1['fibo_long']
+                    tp1_s = min(resistencia_spot, max(fibo_s['tp1'], precio_act + (atr_act * 2)))
                     tp2_s = max(fibo_s['tp2'], tp1_s * 1.02)
                     tp3_s = max(fibo_s['tp3'], tp2_s * 1.02)
 
-                    riesgo_s = h4_precio - sl_spot
-                    beneficio_s = tp1_s - h4_precio
+                    riesgo_s = precio_act - sl_spot
+                    beneficio_s = tp1_s - precio_act
                     
                     if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
                         entradas_sniper_spot.append({
                             'symbol': simbolo_limpio,
-                            'precio': h4_precio, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
-                            'tp1': tp1_s, 'pct_tp1': abs((tp1_s - h4_precio)/h4_precio)*100,
-                            'tp2': tp2_s, 'pct_tp2': abs((tp2_s - h4_precio)/h4_precio)*100,
-                            'tp3': tp3_s, 'pct_tp3': abs((tp3_s - h4_precio)/h4_precio)*100,
-                            'supertrend': h4['supertrend_estado'],
+                            'precio': precio_act, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
+                            'tp1': tp1_s, 'pct_tp1': abs((tp1_s - precio_act)/precio_act)*100,
+                            'tp2': tp2_s, 'pct_tp2': abs((tp2_s - precio_act)/precio_act)*100,
+                            'tp3': tp3_s, 'pct_tp3': abs((tp3_s - precio_act)/precio_act)*100,
+                            'supertrend': h1['supertrend_estado'],
                             'rr': f"1:{(beneficio_s/riesgo_s):.1f}"
                         })
 
