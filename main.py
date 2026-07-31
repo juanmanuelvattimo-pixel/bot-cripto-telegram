@@ -81,8 +81,12 @@ exchange = ccxt.bingx({
 # ==========================================
 def calcular_soportes_resistencias(df, precio_actual):
     pivots_high, pivots_low = [], []
+    n = len(df)
     
-    for i in range(2, len(df) - 2):
+    if n < 5:
+        return precio_actual * 0.95, precio_actual * 1.05
+    
+    for i in range(2, n - 2):
         if df['high'].iloc[i] > df['high'].iloc[i-1] and df['high'].iloc[i] > df['high'].iloc[i-2] and \
            df['high'].iloc[i] > df['high'].iloc[i+1] and df['high'].iloc[i] > df['high'].iloc[i+2]:
             pivots_high.append(df['high'].iloc[i])
@@ -92,13 +96,12 @@ def calcular_soportes_resistencias(df, precio_actual):
             pivots_low.append(df['low'].iloc[i])
             
     por_encima = [p for p in pivots_high if p > precio_actual]
-    resistencia = min(por_encima) if por_encima else df['high'].tail(30).max()
+    resistencia = min(por_encima) if por_encima else df['high'].tail(min(30, n)).max()
     
     por_debajo = [p for p in pivots_low if p < precio_actual]
-    soporte = max(por_debajo) if por_debajo else df['low'].tail(30).min()
+    soporte = max(por_debajo) if por_debajo else df['low'].tail(min(30, n)).min()
     
     return soporte, resistencia
-
 # ==========================================
 # NUEVO MÓDULO: REBOTE DE RANGO (CORREGIDO)
 # ==========================================
@@ -171,43 +174,35 @@ def analizar_par_completo(symbol, timeframe):
     try:
         limit_velas = 60 if timeframe == '1w' else 80
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit_velas)
-        if not ohlcv or len(ohlcv) < 5:  # Mínimo de velas absolutas para intentar algo
+        
+        # EXIGIMOS UN MÍNIMO DE 20 VELAS. Si tiene menos (criptos muy nuevas), se ignora sin error.
+        if not ohlcv or len(ohlcv) < 20:
             return None
         
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         n_velas = len(df)
         precio = df['close'].iloc[-1]
 
-        # Ventanas dinámicas basadas en las velas reales disponibles para evitar out of bounds
-        w_rsi_mfi_adx = min(14, n_velas - 1)
-        w_ema10 = min(10, n_velas - 1)
-        w_ema20 = min(20, n_velas - 1)
-        w_ema55 = min(55, n_velas - 1)
-        w_rolling = min(14, n_velas - 1)
-
-        if w_rsi_mfi_adx < 2:
-            return None
-
-        df['ema10'] = ta.trend.ema_indicator(df['close'], window=w_ema10)
-        df['ema20'] = ta.trend.ema_indicator(df['close'], window=w_ema20)
-        df['ema55'] = ta.trend.ema_indicator(df['close'], window=w_ema55)
+        df['ema10'] = ta.trend.ema_indicator(df['close'], window=10)
+        df['ema20'] = ta.trend.ema_indicator(df['close'], window=20)
+        df['ema55'] = ta.trend.ema_indicator(df['close'], window=55)
         
-        df['rsi'] = ta.momentum.rsi(df['close'], window=w_rsi_mfi_adx)
-        df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=w_rsi_mfi_adx)
+        df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+        df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
-        adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=w_rsi_mfi_adx)
+        adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
         df['adx'] = adx_ind.adx()
         df['plus_di'] = adx_ind.adx_pos()
         df['minus_di'] = adx_ind.adx_neg()
         
-        df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=w_rsi_mfi_adx)
+        df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
         multiplicador = 2.0
         hl2 = (df['high'] + df['low']) / 2
         df['up_basic'] = hl2 - (multiplicador * df['atr'])
         df['dn_basic'] = hl2 + (multiplicador * df['atr'])
         
         df['supertrend_direction'] = 1
-        for i in range(1, len(df)):
+        for i in range(1, n_velas):
             if df['close'].iloc[i] > df['dn_basic'].iloc[i-1]:
                 df.loc[df.index[i], 'supertrend_direction'] = 1
             elif df['close'].iloc[i] < df['up_basic'].iloc[i-1]:
@@ -215,19 +210,19 @@ def analizar_par_completo(symbol, timeframe):
             else:
                 df.loc[df.index[i], 'supertrend_direction'] = df['supertrend_direction'].iloc[i-1]
 
-        low_min = df['low'].rolling(window=w_rolling).min()
-        high_max = df['high'].rolling(window=w_rolling).max()
+        low_min = df['low'].rolling(window=14).min()
+        high_max = df['high'].rolling(window=14).max()
         df['stoch_k'] = ((df['close'] - low_min) / (high_max - low_min)) * 100
-        df['stoch_d'] = df['stoch_k'].rolling(window=min(3, n_velas)).mean()
+        df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
 
         e10, e20, e55 = df['ema10'].iloc[-1], df['ema20'].iloc[-1], df['ema55'].iloc[-1]
         st_dir = df['supertrend_direction'].iloc[-1]
-        st_dir_prev = df['supertrend_direction'].iloc[-2] if len(df['supertrend_direction']) > 1 else st_dir
+        st_dir_prev = df['supertrend_direction'].iloc[-2]
         
         stoch_k = df['stoch_k'].iloc[-1]
         stoch_d = df['stoch_d'].iloc[-1]
-        stoch_k_prev = df['stoch_k'].iloc[-2] if len(df['stoch_k']) > 1 else stoch_k
-        stoch_d_prev = df['stoch_d'].iloc[-2] if len(df['stoch_d']) > 1 else stoch_d
+        stoch_k_prev = df['stoch_k'].iloc[-2]
+        stoch_d_prev = df['stoch_d'].iloc[-2]
         
         adx = df['adx'].iloc[-1]
         plus_di = df['plus_di'].iloc[-1]
@@ -242,9 +237,9 @@ def analizar_par_completo(symbol, timeframe):
         cruce_alcista_estocastico = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
         cruce_bajista_estocastico = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
 
-        soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
+        soporte_key, resistencia_key = calcular_soportes_resistेंसेस = calcular_soportes_resistencias(df, precio)
 
-        recent_df = df.tail(min(30, n_velas))
+        recent_df = df.tail(30)
         swing_high = recent_df['high'].max()
         swing_low = recent_df['low'].min()
         rango_fibo = swing_high - swing_low
@@ -287,9 +282,7 @@ def analizar_par_completo(symbol, timeframe):
             'fibo_short': {'tp1': fibo_tp1_short, 'tp2': fibo_tp2_short, 'tp3': fibo_tp3_short}
         }
     except Exception as e:
-        logging.error(f"Error analizando {symbol} en {timeframe}: {e}")
         return None
-
 # ==========================================
 # MÓDULO UNIFICADO DE EVALUACIÓN (DRY)
 # ==========================================
