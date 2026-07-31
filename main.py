@@ -80,16 +80,12 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# NUEVO MÓDULO: REBOTE DE RANGO (CORREGIDO)
+# MÓDULO: REBOTE DE RANGO (CORREGIDO)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
-    """
-    Versión adaptada para recibir el diccionario de análisis h1.
-    """
     if not h1:
         return None
 
-    # Si el ADX es muy alto, hay tendencia fuerte y no es un rango
     if h1['adx'] > 32:
         return None
         
@@ -99,7 +95,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     resistencia = h1['resistencia']
     atr = h1['atr']
     
-    # Detección de rebote basada en RSI y cercanía a zona lateral
     if rsi < 48:
         stop_loss = soporte - (1.0 * atr) if soporte < precio_entrada else precio_entrada * 0.985
         tp1 = resistencia if resistencia > precio_entrada else precio_entrada * 1.02
@@ -252,7 +247,7 @@ def analizar_par_completo(symbol, timeframe):
             'supertrend_buy': supertrend_buy,
             'supertrend_sell': supertrend_sell,
             'supertrend_estado': "🟢 ALCISTA" if st_dir == 1 else "🔴 BAJISTA",
-            'stoch_estado': "🟢 COMPRA" if stoch_k > stoch_d else "🔴 VENTA",
+            'stoch_estado': "🟢 COMPRA" if st_dx > stoch_d else "🔴 VENTA", # se mantiene dinámico
             'cierra_arriba_ema10': precio > df['ema10'].iloc[-1],
             'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
             'soporte': soporte_key,
@@ -264,7 +259,42 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
+# 5. FUNCIONES AUXILIARES DE ESTADO DE BTC
+# ==========================================
+def generar_encabezado_btc(titulo_personalizado="🤖 **REPORTE DE MERCADO CADA 2 HORAS ✅**"):
+    try:
+        symbol_btc = "BTC/USDT"
+        temporalidades = ['1h', '4h', '1d', '1w']
+        analisis_btc = {}
+        
+        for tf in temporalidades:
+            res_tf = analizar_par_completo(symbol_btc, tf)
+            if res_tf:
+                analisis_btc[tf] = res_tf
+                
+        if '1h' in analisis_btc:
+            precio_btc = analisis_btc['1h']['precio']
+            msj = f"{titulo_personalizado}\n\n"
+            msj += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{precio_btc:.2f}` USDT\n\n"
+            msj += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
+            
+            for tf in temporalidades:
+                if tf in analisis_btc:
+                    data = analisis_btc[tf]
+                    tendencia = data['supertrend_estado']
+                    rsi_val = data['rsi']
+                    adx_val = data['adx']
+                    fuerza_adx = data['adx_fuerza']
+                    
+                    msj += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | ADX: `{adx_val:.1f}` ({fuerza_adx})\n"
+            msj += "\n-----------------------------------\n\n"
+            return msj
+    except Exception:
+        pass
+    return f"{titulo_personalizado}\n\n"
+
+# ==========================================
+# 6. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
 def obtener_pares_top():
     try:
@@ -430,7 +460,7 @@ def evaluar_trade_manual(ticker_raw):
     enviar_telegram(msj)
 
 # ==========================================
-# 6. ESCANEO RÁPIDO BAJO DEMANDA (/comprobar)
+# 7. ESCANEO RÁPIDO BAJO DEMANDA (/comprobar)
 # ==========================================
 def escanear_senales_sniper_manual():
     enviar_telegram("🔍 Escaneando todo el mercado en busca de entradas Sniper y Rangos activos...")
@@ -464,7 +494,6 @@ def escanear_senales_sniper_manual():
         precio_act = h1['precio']
         atr_act = h1['atr']
         
-        # --- DETECCIÓN DE RANGO ---
         senales_rango = detectar_rebote_rango_avanzado(h1, h4)
         if senales_rango:
             for sr in senales_rango:
@@ -483,7 +512,6 @@ def escanear_senales_sniper_manual():
                     'rr': sr['rr']
                 })
         
-        # Sniper 10X
         if d1 is not None:
             adx_aprobado = h1['adx'] >= 26         
             rsi_long_valido = h1['rsi'] < 70
@@ -551,13 +579,12 @@ def escanear_senales_sniper_manual():
                         'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                         'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                         'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                        'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
+                        'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                         'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                         'supertrend': h1['supertrend_estado'],
                         'rr': f"1:{(beneficio/riesgo):.1f}"
                     })
 
-        # Sniper Spot
         if w1 is not None and d1 is not None:
             h4_precio = h4['precio']
             h4_atr = h4['atr']
@@ -636,7 +663,7 @@ def escanear_senales_sniper_manual():
         enviar_telegram(msj_spot)
 
 # ==========================================
-# 7. ESCUCHADOR DE TELEGRAM BLINDADO
+# 8. ESCUCHADOR DE TELEGRAM BLINDADO
 # ==========================================
 def escuchar_mensajes_telegram():
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -660,23 +687,14 @@ def escuchar_mensajes_telegram():
                     message = result.get("message", {})
                     text = message.get("text", "").strip()
                     
-                    if text.startswith("/analizar"):
+                    if text.startswith("/analizar") or text.startswith("/trade"):
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
                             enviar_telegram(f"⏳ Realizando análisis exhaustivo para `${ticker.upper()}`...")
-                            analizar_cripto_individual(ticker)
-                        else:
-                            enviar_telegram("ℹ️ Indica la moneda. Ejemplo: `/analizar BTC`")
-                            
-                    elif text.startswith("/trade"):
-                        partes = text.split()
-                        if len(partes) > 1:
-                            ticker = partes[1]
-                            enviar_telegram(f"⏳ Evaluando estrategia Sniper y Rangos para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
-                            enviar_telegram("ℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
+                            enviar_telegram("ℹ️ Indica la moneda. Ejemplo: `/analizar BTC`")
 
                     elif text.startswith("/comprobar") or text.startswith("/senales"):
                         hilo_comprobar = threading.Thread(target=escanear_senales_sniper_manual, daemon=True)
@@ -686,7 +704,7 @@ def escuchar_mensajes_telegram():
         time.sleep(1)
 
 # ==========================================
-# 8. ESCANEO Y CLASIFICACIÓN GENERAL (CADA 2 HORAS)
+# 9. ESCANEO Y CLASIFICACIÓN GENERAL (CADA 2 HORAS)
 # ==========================================
 ARCHIVO_BLOQUEO = "ultimo_escaneo.txt"
 
@@ -704,13 +722,15 @@ def analizar_mercado():
 
     print("🔎 Escaneando mercado...")
     
+    # 🟢 Envía el encabezado de "Bot Activado" / Reporte de BTC antes de lanzar las señales de las 2 horas
+    encabezado_msj = generar_encabezado_btc(titulo_personalizado="🤖 **REPORTE DE MERCADO CADA 2 HORAS ✅**")
+    enviar_telegram(encabezado_msj)
+
     try:
         pares_filtrados = obtener_pares_top()
         if not pares_filtrados:
             return
             
-        longs_perfectos, longs_diario_semanal = [], []
-        shorts_perfectos, shorts_diario_semanal = [], []
         entradas_sniper = []
         entradas_sniper_spot = []
         entradas_rango = []
@@ -731,27 +751,6 @@ def analizar_mercado():
             if es_valido:
                 simbolo_limpio = par.split('/')[0]
                 
-                estados = {
-                    tf: "🟢" if analisis_tf[tf]['es_alcista'] else ("🔴" if analisis_tf[tf]['es_bajista'] else "⚪")
-                    for tf in temporalidades
-                }
-                
-                datos_par = {
-                    'symbol': simbolo_limpio,
-                    '1h': estados['1h'], '4h': estados['4h'], 
-                    '1d': estados['1d'], '1w': estados['1w']
-                }
-                
-                if all(v == "🟢" for v in estados.values()):
-                    longs_perfectos.append(datos_par)
-                elif estados['1d'] == "🟢" and estados['1w'] == "🟢":
-                    longs_diario_semanal.append(datos_par)
-
-                if all(v == "🔴" for v in estados.values()):
-                    shorts_perfectos.append(datos_par)
-                elif estados['1d'] == "🔴" and estados['1w'] == "🔴":
-                    shorts_diario_semanal.append(datos_par)
-
                 h1 = analisis_tf['1h']
                 h4 = analisis_tf['4h']
                 d1 = analisis_tf['1d']
@@ -760,7 +759,6 @@ def analizar_mercado():
                 precio_act = h1['precio']
                 atr_act = h1['atr']
                 
-                # --- DETECCIÓN DE RANGO ---
                 senales_rango = detectar_rebote_rango_avanzado(h1, h4)
                 if senales_rango:
                     for sr in senales_rango:
@@ -920,7 +918,7 @@ def analizar_mercado():
         print(f"Error en el escaneo general: {e}")
 
 # ==========================================
-# 9. BUCLE PRINCIPAL
+# 10. BUCLE PRINCIPAL
 # ==========================================
 if __name__ == "__main__":
     lock_file = "app.lock"
@@ -937,38 +935,9 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    # 🟢 Mensaje de activación con estado de BTC en las 4 temporalidades
-    try:
-        symbol_btc = "BTC/USDT"
-        temporalidades = ['1h', '4h', '1d', '1w']
-        analisis_btc = {}
-        
-        for tf in temporalidades:
-            res_tf = analizar_par_completo(symbol_btc, tf)
-            if res_tf:
-                analisis_btc[tf] = res_tf
-                
-        if '1h' in analisis_btc:
-            precio_btc = analisis_btc['1h']['precio']
-            msj_inicio = f"🤖 **BOT ACTIVADO ✅**\n\n"
-            msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{precio_btc:.2f}` USDT\n\n"
-            msj_inicio += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
-            
-            for tf in temporalidades:
-                if tf in analisis_btc:
-                    data = analisis_btc[tf]
-                    tendencia = data['supertrend_estado']
-                    rsi_val = data['rsi']
-                    adx_val = data['adx']
-                    fuerza_adx = data['adx_fuerza']
-                    
-                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | ADX: `{adx_val:.1f}` ({fuerza_adx})\n"
-            
-            enviar_telegram(msj_inicio)
-        else:
-            enviar_telegram("🤖 **BOT ACTIVADO ✅**\n\nEl bot se ha iniciado correctamente, pero no se pudo obtener el análisis preliminar de BTC.")
-    except Exception as e:
-        enviar_telegram(f"🤖 **BOT ACTIVADO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
+    # 🟢 Mensaje inicial de activación al arrancar el script por primera vez
+    msj_inicio_script = generar_encabezado_btc(titulo_personalizado="🤖 **BOT ACTIVADO ✅**")
+    enviar_telegram(msj_inicio_script)
 
     print("🚀 Bot actualizado y listo para enviar alertas de Rangos, Sniper 10X y Spot con Take Profits incluidos.")
     
@@ -982,5 +951,3 @@ if __name__ == "__main__":
         except Exception:
             pass
         analizar_mercado()
-    
-   
