@@ -102,8 +102,9 @@ def calcular_soportes_resistencias(df, precio_actual):
     soporte = max(por_debajo) if por_debajo else df['low'].tail(min(30, n)).min()
     
     return soporte, resistencia
+
 # ==========================================
-# NUEVO MÓDULO: REBOTE DE RANGO (CORREGIDO)
+# NUEVO MÓDULO: REBOTE DE RANGO (MEJORADO)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
@@ -118,7 +119,14 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     resistencia = h1['resistencia']
     atr = h1['atr']
     
-    if rsi < 48:
+    bb_lower = h1.get('bb_lower', soporte)
+    bb_upper = h1.get('bb_upper', resistencia)
+    
+    # Filtro de mechas y confluencia con Bandas de Bollinger
+    condicion_mecha_long = precio_entrada <= (soporte + (atr * 0.8)) or precio_entrada <= bb_lower
+    condicion_mecha_short = precio_entrada >= (resistencia - (atr * 0.8)) or precio_entrada >= bb_upper
+
+    if rsi < 48 and condicion_mecha_long:
         stop_loss = soporte - (1.0 * atr) if soporte < precio_entrada else precio_entrada * 0.985
         tp1 = resistencia if resistencia > precio_entrada else precio_entrada * 1.02
         tp2 = tp1 * 1.01
@@ -141,7 +149,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'rr': rr_val
         }]
         
-    if rsi > 52:
+    if rsi > 52 and condicion_mecha_short:
         stop_loss = resistencia + (1.0 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
         tp1 = soporte if soporte < precio_entrada else precio_entrada * 0.98
         tp2 = tp1 * 0.99
@@ -166,16 +174,14 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         
     return None
 
-
 # ==========================================
-# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL (CORREGIDO)
+# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
         limit_velas = 60 if timeframe == '1w' else 80
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit_velas)
         
-        # EXIGIMOS UN MÍNIMO DE 20 VELAS. Si tiene menos (criptos muy nuevas), se ignora sin error.
         if not ohlcv or len(ohlcv) < 20:
             return None
         
@@ -189,6 +195,11 @@ def analizar_par_completo(symbol, timeframe):
         
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
+        
+        # Bandas de Bollinger para confluencia en rangos
+        indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
+        df['bb_upper'] = indicator_bb.bollinger_hband()
+        df['bb_lower'] = indicator_bb.bollinger_lband()
         
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
         df['adx'] = adx_ind.adx()
@@ -237,7 +248,7 @@ def analizar_par_completo(symbol, timeframe):
         cruce_alcista_estocastico = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
         cruce_bajista_estocastico = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
 
-        soporte_key, resistencia_key = calcular_soportes_resistेंसेस = calcular_soportes_resistencias(df, precio)
+        soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
         recent_df = df.tail(30)
         swing_high = recent_df['high'].max()
@@ -274,15 +285,21 @@ def analizar_par_completo(symbol, timeframe):
             'supertrend_sell': supertrend_sell,
             'supertrend_estado': "🟢 ALCISTA" if st_dir == 1 else "🔴 BAJISTA",
             'stoch_estado': "🟢 COMPRA" if stoch_k > stoch_d else "🔴 VENTA",
+            'stoch_k': stoch_k,
             'cierra_arriba_ema10': precio > df['ema10'].iloc[-1],
             'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
+            'ema10': df['ema10'].iloc[-1],
+            'ema20': df['ema20'].iloc[-1],
             'soporte': soporte_key,
             'resistencia': resistencia_key,
+            'bb_upper': df['bb_upper'].iloc[-1],
+            'bb_lower': df['bb_lower'].iloc[-1],
             'fibo_long': {'tp1': fibo_tp1_long, 'tp2': fibo_tp2_long, 'tp3': fibo_tp3_long},
             'fibo_short': {'tp1': fibo_tp1_short, 'tp2': fibo_tp2_short, 'tp3': fibo_tp3_short}
         }
     except Exception as e:
         return None
+
 # ==========================================
 # MÓDULO UNIFICADO DE EVALUACIÓN (DRY)
 # ==========================================
@@ -314,16 +331,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': sr['rr']
             })
 
-    # 2. Sniper 10X
+    # 2. Sniper 10X (Implementación de Pullbacks)
     adx_aprobado = h1['adx'] >= 26          
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
+
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.98)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.02)
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
         adx_aprobado and rsi_long_valido and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
-        h1['cierra_arriba_ema10']
+        pullback_long
     )
 
     if gatillo_long_10x:
@@ -356,7 +376,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         d1['es_bajista'] and h4['es_bajista'] and
         adx_aprobado and rsi_short_valido and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
-        h1['cierra_abajo_ema10']
+        pullback_short
     )
 
     if gatillo_short_10x:
@@ -385,16 +405,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
 
-    # 3. Sniper Spot
+    # 3. Sniper Spot (Validación de Estocástico)
     h4_rsi_valido = h4['rsi'] < 70
     h4_adx_valido = h4['adx'] >= 26
     h1_rsi_valido = h1['rsi'] < 70
     h1_adx_valido = h1['adx'] >= 26
 
+    estocastico_valido_spot = h1['stoch_k'] < 35
+
     gatillo_spot = (
         d1['es_alcista'] and
         h4_adx_valido and h4_rsi_valido and (h4['supertrend_estado'] == "🟢 ALCISTA") and
-        h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10']
+        h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and 
+        estocastico_valido_spot
     )
 
     if gatillo_spot:
@@ -481,7 +504,6 @@ def evaluar_trade_manual(ticker_raw):
             return
         analisis_tf[tf] = res
 
-    h1 = analisis_tf['1h']
     sniper, spot, rango = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
     
     msj = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN MANUAL DE TRADE: ${simbolo_limpio}*\n\n"
@@ -566,7 +588,7 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango):
     if not entradas_sniper and not entradas_sniper_spot and not entradas_rango:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones estrictas.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones.")
         return
 
     if entradas_rango:
