@@ -468,6 +468,13 @@ def evaluar_trade_manual(ticker_raw):
         if not (w1['es_alcista'] and d1['es_alcista']): msj += "  • *Falla:* Tendencia en 1W o 1D no es alcista.\n"
         if not h4_adx_valido: msj += f"  • *Falla:* ADX en 4H ({h4['adx']:.1f}) es menor a 26.\n"
 
+    res_rebote = detectar_rebote_rango_avanzado(h1, h4)
+    if res_rebote is not None:
+        msj += f"\n⚡ *{res_rebote['Señal']}*\n"
+        msj += f"💵 *Entrada:* `{res_rebote['Precio']:.4f}`\n"
+        msj += f"🛑 *Stop Loss:* `{res_rebote['Stop Loss']:.4f}`\n"
+        msj += f"🎯 *Take Profit:* `{res_rebote['Take Profit']:.4f}`\n"
+
     enviar_telegram(msj)
 
 # ==========================================
