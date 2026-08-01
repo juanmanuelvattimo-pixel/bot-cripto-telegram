@@ -122,15 +122,14 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     bb_lower = h1.get('bb_lower', soporte)
     bb_upper = h1.get('bb_upper', resistencia)
     
-    # Filtro de mechas y confluencia con Bandas de Bollinger
     condicion_mecha_long = precio_entrada <= (soporte + (atr * 0.8)) or precio_entrada <= bb_lower
     condicion_mecha_short = precio_entrada >= (resistencia - (atr * 0.8)) or precio_entrada >= bb_upper
 
     if rsi < 48 and condicion_mecha_long:
-        stop_loss = soporte - (1.0 * atr) if soporte < precio_entrada else precio_entrada * 0.985
-        tp1 = resistencia if resistencia > precio_entrada else precio_entrada * 1.02
-        tp2 = tp1 * 1.01
-        tp3 = tp1 * 1.02
+        stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.975
+        tp1 = precio_entrada + (atr * 1.5)
+        tp2 = precio_entrada + (atr * 2.5)
+        tp3 = precio_entrada + (atr * 3.5)
         
         riesgo = precio_entrada - stop_loss
         beneficio = tp1 - precio_entrada
@@ -150,10 +149,10 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         }]
         
     if rsi > 52 and condicion_mecha_short:
-        stop_loss = resistencia + (1.0 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
-        tp1 = soporte if soporte < precio_entrada else precio_entrada * 0.98
-        tp2 = tp1 * 0.99
-        tp3 = tp1 * 0.98
+        stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.025
+        tp1 = precio_entrada - (atr * 1.5)
+        tp2 = precio_entrada - (atr * 2.5)
+        tp3 = precio_entrada - (atr * 3.5)
         
         riesgo = stop_loss - precio_entrada
         beneficio = precio_entrada - tp1
@@ -196,7 +195,6 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
-        # Bandas de Bollinger para confluencia en rangos
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
         df['bb_lower'] = indicator_bb.bollinger_lband()
@@ -250,19 +248,6 @@ def analizar_par_completo(symbol, timeframe):
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
-        recent_df = df.tail(30)
-        swing_high = recent_df['high'].max()
-        swing_low = recent_df['low'].min()
-        rango_fibo = swing_high - swing_low
-
-        fibo_tp1_long = precio + (rango_fibo * 0.618)
-        fibo_tp2_long = swing_high if swing_high > precio else (precio + rango_fibo)
-        fibo_tp3_long = precio + (rango_fibo * 1.618)
-
-        fibo_tp1_short = precio - (rango_fibo * 0.618)
-        fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
-        fibo_tp3_short = precio - (rango_fibo * 1.618)
-
         puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1, mfi > 50])
         puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
 
@@ -294,8 +279,6 @@ def analizar_par_completo(symbol, timeframe):
             'resistencia': resistencia_key,
             'bb_upper': df['bb_upper'].iloc[-1],
             'bb_lower': df['bb_lower'].iloc[-1],
-            'fibo_long': {'tp1': fibo_tp1_long, 'tp2': fibo_tp2_long, 'tp3': fibo_tp3_long},
-            'fibo_short': {'tp1': fibo_tp1_short, 'tp2': fibo_tp2_short, 'tp3': fibo_tp3_short}
         }
     except Exception as e:
         return None
@@ -331,7 +314,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': sr['rr']
             })
 
-    # 2. Sniper 10X (Implementación de Pullbacks)
+    # 2. Sniper 10X (Implementación de Pullbacks con TPs ajustados por ATR)
     adx_aprobado = h1['adx'] >= 26          
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
@@ -352,16 +335,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = max(sl_tecnico, sl_max_10x)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
-        resistencia_objetivo = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 3))
-        fibo = h1['fibo_long']
-        tp1 = min(resistencia_objetivo, max(fibo['tp1'], precio_act + (atr_act * 1.5)))
-        tp2 = max(fibo['tp2'], tp1 * 1.015)
-        tp3 = max(fibo['tp3'], tp2 * 1.015)
+        # TPs basados en ATR cercanos y realistas
+        tp1 = precio_act + (atr_act * 1.5)
+        tp2 = precio_act + (atr_act * 2.5)
+        tp3 = precio_act + (atr_act * 3.5)
 
         riesgo = precio_act - sl_final
         beneficio = tp1 - precio_act
         
-        if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -385,27 +367,26 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = min(sl_tecnico, sl_max_10x)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
-        soporte_objetivo = h1['soporte'] if h1['soporte'] < precio_act else (precio_act - (atr_act * 3))
-        fibo = h1['fibo_short']
-        tp1 = max(soporte_objetivo, min(fibo['tp1'], precio_act - (atr_act * 1.5)))
-        tp2 = min(fibo['tp2'], tp1 * 0.985)
-        tp3 = min(fibo['tp3'], tp2 * 0.985)
+        # TPs basados en ATR cercanos y realistas
+        tp1 = precio_act - (atr_act * 1.5)
+        tp2 = precio_act - (atr_act * 2.5)
+        tp3 = precio_act - (atr_act * 3.5)
 
         riesgo = sl_final - precio_act
         beneficio = precio_act - tp1
 
-        if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
 
-    # 3. Sniper Spot (Validación de Estocástico)
+    # 3. Sniper Spot (Validación de Estocástico y TPs por ATR)
     h4_rsi_valido = h4['rsi'] < 70
     h4_adx_valido = h4['adx'] >= 26
     h1_rsi_valido = h1['rsi'] < 70
@@ -424,16 +405,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_spot = h1['soporte'] - (1.5 * atr_act)
         pct_sl_spot = abs((precio_act - sl_spot) / precio_act) * 100
         
-        resistencia_spot = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 4))
-        fibo_s = h1['fibo_long']
-        tp1_s = min(resistencia_spot, max(fibo_s['tp1'], precio_act + (atr_act * 2)))
-        tp2_s = max(fibo_s['tp2'], tp1_s * 1.02)
-        tp3_s = max(fibo_s['tp3'], tp2_s * 1.02)
+        tp1_s = precio_act + (atr_act * 2.0)
+        tp2_s = precio_act + (atr_act * 3.5)
+        tp3_s = precio_act + (atr_act * 5.0)
 
         riesgo_s = precio_act - sl_spot
         beneficio_s = tp1_s - precio_act
         
-        if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
+        if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.2:
             spot_res.append({
                 'symbol': simbolo_limpio,
                 'precio': precio_act, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
