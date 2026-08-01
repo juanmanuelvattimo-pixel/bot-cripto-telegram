@@ -450,7 +450,7 @@ def obtener_pares_top():
         ]
         
         pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
-        return [item['symbol'] for item in pares_usdt[:150]]
+        return [item['symbol'] for item in pares_usdt[:300]]
     except Exception as e:
         logging.error(f"Error obteniendo pares top: {e}")
         return []
