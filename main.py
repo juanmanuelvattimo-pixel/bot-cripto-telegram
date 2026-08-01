@@ -117,7 +117,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# NUEVO MÓDULO: REBOTE DE RANGO (MEJORADO)
+# MÓDULO: REBOTE DE RANGO (MEJORADO)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
@@ -180,7 +180,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp2': tp2,
             'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
             'tp3': tp3,
-            'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
+            'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
             'rr': rr_val
         }]
         
@@ -265,7 +265,7 @@ def analizar_par_completo(symbol, timeframe):
         puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
-        adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
+        adx_fuerza = "Fuerte 💪" if adx >= 22 else "Débil / Rango 😴"
 
         return {
             'precio': precio,
@@ -327,12 +327,11 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': sr['rr']
             })
 
-    # 2. Sniper 10X (Pullback flexible desde la EMA 10 hasta la EMA 20)
+    # 2. Sniper 10X (ADX >= 22 y Pullback flexible entre EMA 10 y EMA 20) -> (Línea aprox. 298)
     adx_aprobado = h1['adx'] >= 22          
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
-    # Ampliado: permite capturar el recorrido completo desde la EMA 10 hasta la EMA 20
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.97)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.98) and h1['precio'] <= (h1['ema20'] * 1.03)
 
@@ -394,19 +393,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
 
-    # 3. Sniper Spot (Validación de Estocástico y TPs por ATR)
+    # 3. Sniper Spot (ADX >= 22, Estocástico y Pullback flexible) -> (Línea aprox. 349)
     h4_rsi_valido = h4['rsi'] < 70
     h4_adx_valido = h4['adx'] >= 22
     h1_rsi_valido = h1['rsi'] < 70
     h1_adx_valido = h1['adx'] >= 22
 
     estocastico_valido_spot = h1['stoch_k'] < 35
+    pullback_spot = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.97)
 
     gatillo_spot = (
         d1['es_alcista'] and
         h4_adx_valido and h4_rsi_valido and (h4['supertrend_estado'] == "🟢 ALCISTA") and
         h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and 
-        estocastico_valido_spot
+        estocastico_valido_spot and pullback_spot
     )
 
     if gatillo_spot:
