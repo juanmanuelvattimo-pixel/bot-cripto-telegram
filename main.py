@@ -117,13 +117,14 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# MÓDULO: REBOTE DE RANGO (MEJORADO)
+# MÓDULO: REBOTE DE RANGO (ESTRICTO / AVANZADO)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    if h1['adx'] > 32:
+    # Filtro de ADX más estricto para evitar mercados tendenciales disfrazados
+    if h1['adx'] > 28:
         return None
         
     precio_entrada = h1['precio']
@@ -134,11 +135,14 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     
     bb_lower = h1.get('bb_lower', soporte)
     bb_upper = h1.get('bb_upper', resistencia)
+    stoch_k = h1.get('stoch_k', 50)
     
-    condicion_mecha_long = precio_entrada <= (soporte + (atr * 0.8)) or precio_entrada <= bb_lower
-    condicion_mecha_short = precio_entrada >= (resistencia - (atr * 0.8)) or precio_entrada >= bb_upper
+    # Condición de cercanía más precisa a los extremos
+    condicion_mecha_long = precio_entrada <= (soporte + (atr * 0.5)) or precio_entrada <= bb_lower
+    condicion_mecha_short = precio_entrada >= (resistencia - (atr * 0.5)) or precio_entrada >= bb_upper
 
-    if rsi < 48 and condicion_mecha_long:
+    # LONG RANGO ESTRICTO: RSI bajo, toque en soporte y estocástico en sobreventa profunda (< 25)
+    if rsi < 48 and condicion_mecha_long and stoch_k < 25:
         stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.975
         tp1 = precio_entrada + (atr * 1.5)
         tp2 = precio_entrada + (atr * 2.5)
@@ -161,7 +165,8 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'rr': rr_val
         }]
         
-    if rsi > 52 and condicion_mecha_short:
+    # SHORT RANGO ESTRICTO: RSI alto, toque en resistencia y estocástico en sobrecompra profunda (> 75)
+    if rsi > 52 and condicion_mecha_short and stoch_k > 75:
         stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.025
         tp1 = precio_entrada - (atr * 1.5)
         tp2 = precio_entrada - (atr * 2.5)
@@ -178,7 +183,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
+            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3,
             'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
             'rr': rr_val
@@ -314,7 +319,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     spot_res = []
     rango_res = []
 
-    # 1. Rangos
+    # 1. Rangos (Estricto)
     senales_rango = detectar_rebote_rango_avanzado(h1, h4)
     if senales_rango:
         for sr in senales_rango:
@@ -332,7 +337,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
-    # Pullback ajustado: exactamente delimitado entre la EMA 10 y la EMA 20
     pullback_long = h1['precio'] <= h1['ema10'] and h1['precio'] >= h1['ema20']
     pullback_short = h1['precio'] >= h1['ema10'] and h1['precio'] <= h1['ema20']
 
@@ -394,7 +398,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
 
-    # 3. Sniper Spot (ADX >= 22, Estocástico y Pullback entre EMA 10 y EMA 20)
+    # 3. Sniper Spot (ADX >= 22, Estocástico y Pullback limpio)
     h4_rsi_valido = h4['rsi'] < 70
     h4_adx_valido = h4['adx'] >= 22
     h1_rsi_valido = h1['rsi'] < 70
@@ -547,7 +551,7 @@ def procesar_par_paralelo(par):
     return sniper, spot, rango
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper y Rangos...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper y Rangos estricto...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -580,7 +584,7 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
         return
 
     if entradas_rango:
-        msj_rango = "🤖 **BOT ACTIVO ✅**\n\n⚡ *REBOTES EN RANGO DETECTADOS:* ⚡\n\n"
+        msj_rango = "🤖 **BOT ACTIVO ✅**\n\n⚡ *REBOTES EN RANGO (ESTRICTO) DETECTADOS:* ⚡\n\n"
         for op in entradas_rango[:5]:
             msj_rango += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_rango += f"💵 *Entrada:* `{formatear_precio(op['precio'])}`\n"
@@ -761,7 +765,7 @@ if __name__ == "__main__":
     analizar_mercado()
     
     while True:
-        time.sleep(7200)
+        time.sleep(3600)
         try:
             with open(lock_file, "w") as f:
                 f.write(str(os.getpid()))
