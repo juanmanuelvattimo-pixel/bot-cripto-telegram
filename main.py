@@ -123,7 +123,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    # Filtro de ADX más estricto para evitar mercados tendenciales disfrazados
     if h1['adx'] > 28:
         return None
         
@@ -137,11 +136,9 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     bb_upper = h1.get('bb_upper', resistencia)
     stoch_k = h1.get('stoch_k', 50)
     
-    # Condición de cercanía más precisa a los extremos
     condicion_mecha_long = precio_entrada <= (soporte + (atr * 0.5)) or precio_entrada <= bb_lower
     condicion_mecha_short = precio_entrada >= (resistencia - (atr * 0.5)) or precio_entrada >= bb_upper
 
-    # LONG RANGO ESTRICTO: RSI bajo, toque en soporte y estocástico en sobreventa profunda (< 25)
     if rsi < 48 and condicion_mecha_long and stoch_k < 25:
         stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.975
         tp1 = precio_entrada + (atr * 1.5)
@@ -165,7 +162,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'rr': rr_val
         }]
         
-    # SHORT RANGO ESTRICTO: RSI alto, toque en resistencia y estocástico en sobrecompra profunda (> 75)
     if rsi > 52 and condicion_mecha_short and stoch_k > 75:
         stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.025
         tp1 = precio_entrada - (atr * 1.5)
@@ -185,7 +181,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp2': tp2,
             'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3,
-            'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
+            'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
             'rr': rr_val
         }]
         
@@ -211,7 +207,6 @@ def analizar_par_completo(symbol, timeframe):
         df['ema55'] = ta.trend.ema_indicator(df['close'], window=55)
         
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-        df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
@@ -255,7 +250,6 @@ def analizar_par_completo(symbol, timeframe):
         plus_di = df['plus_di'].iloc[-1]
         minus_di = df['minus_di'].iloc[-1]
         rsi = df['rsi'].iloc[-1]
-        mfi = df['mfi'].iloc[-1]
         atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
         
         supertrend_buy = (st_dir_prev == -1) and (st_dir == 1)
@@ -266,8 +260,9 @@ def analizar_par_completo(symbol, timeframe):
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
-        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1, mfi > 50])
-        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
+        # EVALUACIÓN DE TENDENCIA SIN MFI (3 CONDICIONES: EMA55, EMAs 10/20, SuperTrend)
+        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1])
+        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1])
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
         adx_fuerza = "Fuerte 💪" if adx >= 22 else "Débil / Rango 😴"
@@ -276,12 +271,11 @@ def analizar_par_completo(symbol, timeframe):
             'precio': precio,
             'atr': atr,
             'rsi': rsi,
-            'mfi': mfi,
             'adx': adx,
             'adx_direccion': adx_direccion,
             'adx_fuerza': adx_fuerza,
-            'es_alcista': puntos_alcistas >= 3,
-            'es_bajista': puntos_bajistas >= 3,
+            'es_alcista': puntos_alcistas >= 2,
+            'es_bajista': puntos_bajistas >= 2,
             'cruce_alcista': cruce_alcista_estocastico,
             'cruce_bajista': cruce_bajista_estocastico,
             'supertrend_buy': supertrend_buy,
@@ -392,8 +386,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
+                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
@@ -474,7 +468,7 @@ def analizar_cripto_individual(ticker_raw):
             msj += f"• *Temporalidad {tf.upper()}*:\n"
             msj += f"  - Precio: `{formatear_precio(res['precio'])}`\n"
             msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
-            msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
+            msj += f"  - RSI: `{res['rsi']:.1f}`\n"
             msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
             msj += f"  - Soporte: `{formatear_precio(res['soporte'])}` | Resistencia: `{formatear_precio(res['resistencia'])}`\n\n"
         else:
@@ -551,7 +545,7 @@ def procesar_par_paralelo(par):
     return sniper, spot, rango
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper y Rangos estricto...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente sin MFI...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -641,7 +635,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Realizando análisis exhaustivo para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Analizando `${ticker.upper()}` sin MFI...")
                             analizar_cripto_individual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/analizar BTC`")
@@ -650,7 +644,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia Sniper y Rangos para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando trade para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
@@ -742,7 +736,7 @@ if __name__ == "__main__":
             precio_btc = analisis_btc['1h']['precio']
             msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{formatear_precio(precio_btc)}` USDT\n\n"
-            msj_inicio += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
+            msj_inicio += "📊 **Estado en Temporalidades (Sin MFI):**\n"
             
             for tf in temporalidades:
                 if tf in analisis_btc:
@@ -760,7 +754,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado, concurrente y listo.")
+    logging.info("🚀 Bot actualizado sin MFI y listo.")
     
     analizar_mercado()
     
