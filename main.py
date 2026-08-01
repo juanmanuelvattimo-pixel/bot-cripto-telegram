@@ -327,13 +327,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': sr['rr']
             })
 
-    # 2. Sniper 10X (ADX >= 22 y Pullback flexible entre EMA 10 y EMA 20) -> (Línea aprox. 298)
+    # 2. Sniper 10X (ADX >= 22 y Pullback limpio entre EMA 10 y EMA 20)
     adx_aprobado = h1['adx'] >= 22          
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.97)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.98) and h1['precio'] <= (h1['ema20'] * 1.03)
+    # Pullback ajustado: exactamente delimitado entre la EMA 10 y la EMA 20
+    pullback_long = h1['precio'] <= h1['ema10'] and h1['precio'] >= h1['ema20']
+    pullback_short = h1['precio'] >= h1['ema10'] and h1['precio'] <= h1['ema20']
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
@@ -393,14 +394,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
 
-    # 3. Sniper Spot (ADX >= 22, Estocástico y Pullback flexible) -> (Línea aprox. 349)
+    # 3. Sniper Spot (ADX >= 22, Estocástico y Pullback entre EMA 10 y EMA 20)
     h4_rsi_valido = h4['rsi'] < 70
     h4_adx_valido = h4['adx'] >= 22
     h1_rsi_valido = h1['rsi'] < 70
     h1_adx_valido = h1['adx'] >= 22
 
     estocastico_valido_spot = h1['stoch_k'] < 35
-    pullback_spot = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.97)
+    pullback_spot = h1['precio'] <= h1['ema10'] and h1['precio'] >= h1['ema20']
 
     gatillo_spot = (
         d1['es_alcista'] and
