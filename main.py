@@ -178,7 +178,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
             'tp3': tp3,
             'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
             'rr': rr_val
@@ -327,13 +327,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': sr['rr']
             })
 
-    # 2. Sniper 10X (Stop Loss técnico puro basado en Soporte y ATR, sin topes rígidos)
-    adx_aprobado = h1['adx'] >= 26          
+    # 2. Sniper 10X (Pullback flexible desde la EMA 10 hasta la EMA 20)
+    adx_aprobado = h1['adx'] >= 22          
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.98)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.02)
+    # Ampliado: permite capturar el recorrido completo desde la EMA 10 hasta la EMA 20
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.97)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.98) and h1['precio'] <= (h1['ema20'] * 1.03)
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
@@ -343,7 +344,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_long_10x:
-        # SL técnico holgado detrás del soporte real usando ATR
         sl_final = h1['soporte'] - (1.5 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
@@ -373,7 +373,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_short_10x:
-        # SL técnico holgado detrás de la resistencia real usando ATR
         sl_final = h1['resistencia'] + (1.5 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
@@ -397,9 +396,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     # 3. Sniper Spot (Validación de Estocástico y TPs por ATR)
     h4_rsi_valido = h4['rsi'] < 70
-    h4_adx_valido = h4['adx'] >= 26
+    h4_adx_valido = h4['adx'] >= 22
     h1_rsi_valido = h1['rsi'] < 70
-    h1_adx_valido = h1['adx'] >= 26
+    h1_adx_valido = h1['adx'] >= 22
 
     estocastico_valido_spot = h1['stoch_k'] < 35
 
