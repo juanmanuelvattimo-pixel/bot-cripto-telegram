@@ -24,7 +24,6 @@ logging.basicConfig(
 def fmt_precio(val):
     if val is None:
         return "0"
-    # Si vale menos de 0.01 (1 centavo), muestra 8 decimales. Si vale más, muestra 4 decimales máximo.
     if abs(val) < 0.01:
         return f"{val:.8f}".rstrip('0').rstrip('.')
     else:
@@ -115,8 +114,6 @@ def calcular_soportes_resistencias(df, precio_actual):
     
     return soporte, resistencia
 
-
-
 # ==========================================
 # MÓDULO: REBOTE DE RANGO (CON R:R MÍNIMO 1.5)
 # ==========================================
@@ -141,9 +138,8 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     condicion_short = (precio_entrada >= bb_upper or precio_entrada >= (resistencia - (atr * 0.2))) and stoch_k > 80
 
     if rsi < 45 and condicion_long:
-        # Stop Loss ajustado y TP1 más lejano para garantizar buen R:R
         stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.985
-        tp1 = precio_entrada + (atr * 2.5)  # Ampliado a 2.5 ATR para buscar mejor beneficio
+        tp1 = precio_entrada + (atr * 2.5)
         tp2 = precio_entrada + (atr * 3.5)
         tp3 = precio_entrada + (atr * 4.5)
         
@@ -154,8 +150,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             return None
             
         ratio_rr = beneficio / riesgo
-        
-        # EXIGIR QUE EL R:R SEA AL MENOS 1.5
         if ratio_rr < 1.5:
             return None
 
@@ -176,7 +170,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         
     if rsi > 55 and condicion_short:
         stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
-        tp1 = precio_entrada - (atr * 2.5)  # Ampliado a 2.5 ATR para buscar mejor beneficio
+        tp1 = precio_entrada - (atr * 2.5)
         tp2 = precio_entrada - (atr * 3.5)
         tp3 = precio_entrada - (atr * 4.5)
         
@@ -187,8 +181,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             return None
             
         ratio_rr = beneficio / riesgo
-        
-        # EXIGIR QUE EL R:R SEA AL MENOS 1.5
         if ratio_rr < 1.5:
             return None
 
@@ -201,7 +193,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
             'tp3': tp3,
             'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'rr': rr_val
@@ -338,12 +330,13 @@ def analizar_par_completo(symbol, timeframe):
 # MÓDULO UNIFICADO DE EVALUACIÓN (DRY - MODIFICADO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
-    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
+    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
         return None, None, None
 
     h1 = analisis_tf['1h']
     h4 = analisis_tf['4h']
     d1 = analisis_tf['1d']
+    m15 = analisis_tf['15m'] # <- Integrado temporalidad de 15m (Punto 4)
     
     precio_act = h1['precio']
     atr_act = h1['atr']
@@ -371,11 +364,24 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
 
+    # =========================================================================
+    # NUEVOS FILTROS AGREGADOS:
+    # Punto 1: Cruce activo del Estocástico en 1H dentro de la zona
+    # Punto 4: Confirmación estructural en 15m (precio > ema10 de 15m para long, etc.)
+    # =========================================================================
+    filtro_estocastico_long = h1['cruce_alcista'] or h1['stoch_k'] < 35
+    filtro_estocastico_short = h1['cruce_bajista'] or h1['stoch_k'] > 65
+
+    filtro_15m_long = m15['precio'] > m15['ema10'] or m15['es_alcista']
+    filtro_15m_short = m15['precio'] < m15['ema10'] or m15['es_bajista']
+
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
         adx_aprobado and rsi_long_valido and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
-        pullback_long
+        pullback_long and
+        filtro_estocastico_long and  # <- Punto 1 aplicado
+        filtro_15m_long             # <- Punto 4 aplicado
     )
 
     if gatillo_long_10x:
@@ -406,7 +412,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         d1['es_bajista'] and h4['es_bajista'] and
         adx_aprobado and rsi_short_valido and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
-        pullback_short
+        pullback_short and
+        filtro_estocastico_short and # <- Punto 1 aplicado
+        filtro_15m_short            # <- Punto 4 aplicado
     )
 
     if gatillo_short_10x:
@@ -503,7 +511,7 @@ def analizar_cripto_individual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     simbolo_limpio = ticker.split('/')[0]
     
-    temporalidades = ['1h', '4h', '1d', '1w']
+    temporalidades = ['15m', '1h', '4h', '1d', '1w'] # Incluye 15m para consultas individuales
     msj = f"🤖 **BOT ACTIVO ✅**\n\n📊 *ANÁLISIS TÉCNICO DETALLADO: ${simbolo_limpio}*\n\n"
     
     for tf in temporalidades:
@@ -524,7 +532,7 @@ def evaluar_trade_manual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     simbolo_limpio = ticker.split('/')[0]
     
-    temporalidades = ['1h', '4h', '1d', '1w']
+    temporalidades = ['15m', '1h', '4h', '1d', '1w']
     analisis_tf = {}
     
     for tf in temporalidades:
@@ -577,7 +585,7 @@ def evaluar_trade_manual(ticker_raw):
 # 6. ESCANEO RÁPIDO CONCURRENTE
 # ==========================================
 def procesar_par_paralelo(par):
-    temporalidades = ['1h', '4h', '1d', '1w']
+    temporalidades = ['15m', '1h', '4h', '1d', '1w']
     analisis_tf = {}
     for tf in temporalidades:
         res = analizar_par_completo(par, tf)
@@ -774,7 +782,7 @@ if __name__ == "__main__":
     
     try:
         symbol_btc = "BTC/USDT"
-        temporalidades = ['1h', '4h', '1d', '1w']
+        temporalidades = ['15m', '1h', '4h', '1d', '1w']
         analisis_btc = {}
         
         for tf in temporalidades:
@@ -788,7 +796,7 @@ if __name__ == "__main__":
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n\n"
             msj_inicio += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
             
-            for tf in temporalidades:
+            for tf in ['1h', '4h', '1d', '1w']:
                 if tf in analisis_btc:
                     data = analisis_btc[tf]
                     tendencia = data['supertrend_estado']
