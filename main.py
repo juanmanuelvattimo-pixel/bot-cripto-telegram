@@ -308,7 +308,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (DRY - CORREGIDO)
+# MÓDULO UNIFICADO DE EVALUACIÓN (DRY - MODIFICADO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
@@ -341,8 +341,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.98)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.02)
+    # PULLBACK FLEXIBLE: Acepta precio sobre la EMA 10, EMA 20 o entre medio de ambas
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
@@ -357,7 +358,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = max(sl_tecnico, sl_max_10x)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
-        # Take Profits acotados por múltiplos del riesgo (R:R saludable)
         riesgo = precio_act - sl_final
         tp1 = precio_act + (riesgo * 1.5)
         tp2 = precio_act + (riesgo * 2.5)
@@ -389,7 +389,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = min(sl_tecnico, sl_max_10x)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
-        # Take Profits acotados por múltiplos del riesgo
         riesgo = sl_final - precio_act
         tp1 = precio_act - (riesgo * 1.5)
         tp2 = precio_act - (riesgo * 2.5)
@@ -415,11 +414,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     estocastico_valido_spot = h1['stoch_k'] < 35
 
+    # SPOT FLEXIBLE: Canal idéntico entre la EMA 10 y la EMA 20
+    pullback_spot_valido = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
+
     gatillo_spot = (
         d1['es_alcista'] and
         h4_adx_valido and h4_rsi_valido and (h4['supertrend_estado'] == "🟢 ALCISTA") and
         h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and 
-        estocastico_valido_spot
+        estocastico_valido_spot and
+        pullback_spot_valido
     )
 
     if gatillo_spot:
