@@ -115,13 +115,14 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# MÓDULO: REBOTE DE RANGO (CON R:R MÍNIMO 1.5)
+# MÓDULO: REBOTE DE RANGO (CON R:R MÍNIMO 1.5 + FILTRO DE BANDA INTERNA)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    if h1['adx'] > 18:
+    # ADX estricto para asegurar rango real
+    if h1['adx'] > 15:
         return None
         
     precio_entrada = h1['precio']
@@ -133,11 +134,30 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     bb_lower = h1.get('bb_lower', soporte)
     bb_upper = h1.get('bb_upper', resistencia)
     stoch_k = h1.get('stoch_k', 50)
+    stoch_d = h1.get('stoch_d', 50)
     
-    condicion_long = (precio_entrada <= bb_lower or precio_entrada <= (soporte + (atr * 0.2))) and stoch_k < 20
-    condicion_short = (precio_entrada >= bb_upper or precio_entrada >= (resistencia - (atr * 0.2))) and stoch_k > 80
+    # Cruce del estocástico en zonas extremas
+    cruce_stoch_long = (stoch_k < 25) and (stoch_k > stoch_d)
+    cruce_stoch_short = (stoch_k > 75) and (stoch_k < stoch_d)
 
-    if rsi < 45 and condicion_long:
+    # =========================================================================
+    # MODIFICACIÓN CLAVE:
+    # 1. El precio debe estar DENTRO de la banda (precio_entrada >= bb_lower / precio_entrada <= bb_upper)
+    # 2. Pero al mismo tiempo debe mantenerse en la zona baja/alta respetando el soporte/resistencia con el ATR.
+    # =========================================================================
+    condicion_long = (
+        (precio_entrada >= bb_lower) and  # <-- Exigimos que esté DENTRO de la banda inferior (no por fuera)
+        (precio_entrada <= (soporte + (atr * 0.4))) and # Zona cercana al soporte
+        cruce_stoch_long
+    )
+    
+    condicion_short = (
+        (precio_entrada <= bb_upper) and  # <-- Exigimos que esté DENTRO de la banda superior (no por fuera)
+        (precio_entrada >= (resistencia - (atr * 0.4))) and # Zona cercana a la resistencia
+        cruce_stoch_short
+    )
+
+    if rsi < 42 and condicion_long:
         stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.985
         tp1 = precio_entrada + (atr * 2.5)
         tp2 = precio_entrada + (atr * 3.5)
@@ -153,22 +173,17 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         if ratio_rr < 1.5:
             return None
 
-        rr_val = f"1:{ratio_rr:.1f}"
-
         return [{
             'tipo': 'LONG RANGO 🟢',
             'sl': stop_loss,
             'pct_sl': abs((precio_entrada - stop_loss)/precio_entrada)*100*10,
-            'tp1': tp1,
-            'pct_tp1': abs((tp1 - precio_entrada)/precio_entrada)*100*10,
-            'tp2': tp2,
-            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
-            'tp3': tp3,
-            'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
-            'rr': rr_val
+            'tp1': tp1, 'pct_tp1': abs((tp1 - precio_entrada)/precio_entrada)*100*10,
+            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'tp3': tp3, 'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
+            'rr': f"1:{ratio_rr:.1f}"
         }]
         
-    if rsi > 55 and condicion_short:
+    if rsi > 58 and condicion_short:
         stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
         tp1 = precio_entrada - (atr * 2.5)
         tp2 = precio_entrada - (atr * 3.5)
@@ -184,19 +199,14 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         if ratio_rr < 1.5:
             return None
 
-        rr_val = f"1:{ratio_rr:.1f}"
-
         return [{
             'tipo': 'SHORT RANGO 🔴',
             'sl': stop_loss,
             'pct_sl': abs((stop_loss - precio_entrada)/precio_entrada)*100*10,
-            'tp1': tp1,
-            'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
-            'tp2': tp2,
-            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
-            'tp3': tp3,
-            'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
-            'rr': rr_val
+            'tp1': tp1, 'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
+            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'tp3': tp3, 'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'rr': f"1:{ratio_rr:.1f}"
         }]
         
     return None
