@@ -173,7 +173,13 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1, 'pct_tp1': abs((tp1 - precio_entrada)/precio_entrada)*100*10,
             'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3, 'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
-            'rr': f"1:{ratio_rr:.1f}"
+            'rr': f"1:{ratio_rr:.1f}",
+            'motivos': [
+                f"ADX bajo ({h1['adx']:.1f} < 15) -> Zona de Rango lateral",
+                f"Precio cerca de soporte / banda inferior (Precio: {fmt_precio(precio_entrada)})",
+                f"RSI en zona baja ({rsi:.1f} < 42)",
+                f"Cruce alcista de Estocástico (K: {stoch_k:.1f} > D: {stoch_d:.1f})"
+            ]
         }]
         
     if rsi > 58 and condicion_short:
@@ -197,9 +203,15 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'sl': stop_loss,
             'pct_sl': abs((stop_loss - precio_entrada)/precio_entrada)*100*10,
             'tp1': tp1, 'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
-            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'tp2': tp2, 'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
             'tp3': tp3, 'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
-            'rr': f"1:{ratio_rr:.1f}"
+            'rr': f"1:{ratio_rr:.1f}",
+            'motivos': [
+                f"ADX bajo ({h1['adx']:.1f} < 15) -> Zona de Rango lateral",
+                f"Precio cerca de resistencia / banda superior",
+                f"RSI en zona alta ({rsi:.1f} > 58)",
+                f"Cruce bajista de Estocástico (K: {stoch_k:.1f} < D: {stoch_d:.1f})"
+            ]
         }]
         
     return None
@@ -357,7 +369,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'tp1': sr['tp1'], 'pct_tp1': sr['pct_tp1'],
                 'tp2': sr['tp2'], 'pct_tp2': sr['pct_tp2'],
                 'tp3': sr['tp3'], 'pct_tp3': sr['pct_tp3'],
-                'rr': sr['rr']
+                'rr': sr['rr'],
+                'motivos': sr.get('motivos', [])
             })
 
     adx_aprobado = h1['adx'] >= 22          
@@ -373,7 +386,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_15m_long = m15['precio'] > m15['ema10'] or m15['es_alcista']
     filtro_15m_short = m15['precio'] < m15['ema10'] or m15['es_bajista']
 
-    # --- SNIPER 10X (INTACTO COMO LO DEJASTE) ---
+    # --- SNIPER 10X ---
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
         adx_aprobado and rsi_long_valido and
@@ -404,7 +417,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{(beneficio/riesgo):.1f}"
+                'rr': f"1:{(beneficio/riesgo):.1f}",
+                'motivos': [
+                    f"Tendencia Diaria (1D) y 4H Alcista aprobada",
+                    f"SuperTrend 1H en Estado ALCISTA (🟢)",
+                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 22) y RSI válido ({h1['rsi']:.1f})",
+                    f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
+                    f"Filtro estocástico y temporalidad 15M a favor"
+                ]
             })
 
     gatillo_short_10x = (
@@ -437,22 +457,22 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{(beneficio/riesgo):.1f}"
+                'rr': f"1:{(beneficio/riesgo):.1f}",
+                'motivos': [
+                    f"Tendencia Diaria (1D) y 4H Bajista aprobada",
+                    f"SuperTrend 1H en Estado BAJISTA (🔴)",
+                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 22) y RSI válido ({h1['rsi']:.1f})",
+                    f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
+                    f"Filtro estocástico y temporalidad 15M a favor"
+                ]
             })
 
-    # =========================================================================
-    # MODIFICACIÓN: FILTROS RELAJADOS PARA SNIPER SPOT
-    # - Se relaja el ADX mínimo en H4 y H1 (ahora >= 15 en lugar de 22)
-    # - Se amplía el rango del RSI (ahora permite hasta 75)
-    # - Se flexibiliza el pullback de las medias móviles y el estocástico
-    # =========================================================================
     h4_rsi_valido_spot = h4['rsi'] < 75
     h4_adx_valido_spot = h4['adx'] >= 15
     h1_rsi_valido_spot = h1['rsi'] < 75
     h1_adx_valido_spot = h1['adx'] >= 15
 
-    estocastico_valido_spot = h1['stoch_k'] < 50  # Ampliado de 35 a 50
-    # Pullback más flexible: acepta si el precio está cerca de la EMA20 o por encima
+    estocastico_valido_spot = h1['stoch_k'] < 50  
     pullback_spot_valido = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
 
     gatillo_spot = (
@@ -476,7 +496,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         riesgo_s = precio_act - sl_spot
         beneficio_s = tp1_s - precio_act
         
-        # Se reduce ligeramente el R:R mínimo exigido en spot para capturar más oportunidades (de 1.3 a 1.1)
         if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.1:
             spot_res.append({
                 'symbol': simbolo_limpio,
@@ -485,7 +504,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'tp2': tp2_s, 'pct_tp2': abs((tp2_s - precio_act)/precio_act)*100,
                 'tp3': tp3_s, 'pct_tp3': abs((tp3_s - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{(beneficio_s/riesgo_s):.1f}"
+                'rr': f"1:{(beneficio_s/riesgo_s):.1f}",
+                'motivos': [
+                    f"Tendencia Diaria (1D) Alcista",
+                    f"SuperTrend Alcista activo en 4H y 1H",
+                    f"ADX e Índice RSI en rangos permitidos para Spot (RSI 1H: {h1['rsi']:.1f})",
+                    f"Estocástico K < 50 ({h1['stoch_k']:.1f}) con Pullback adecuado a medias"
+                ]
             })
 
     return sniper_res, spot_res, rango_res
@@ -561,7 +586,11 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
             msj += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
             msj += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
-            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
+            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n"
+            msj += f"📋 *Condiciones Cumplidas:*\n"
+            for m in op.get('motivos', []):
+                msj += f"  • {m}\n"
+            msj += "\n"
     else:
         msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales.\n\n"
 
@@ -573,7 +602,11 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}%)_\n"
             msj += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}%)_\n"
             msj += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}%)_\n"
-            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}%)_\n\n"
+            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}%)_\n"
+            msj += f"📋 *Condiciones Cumplidas:*\n"
+            for m in op.get('motivos', []):
+                msj += f"  • {m}\n"
+            msj += "\n"
     else:
         msj += "⚪ *SNIPER SPOT:* No califica para trade en este momento.\n\n"
 
@@ -585,6 +618,9 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"🎯 *TP1:* `{fmt_precio(r['tp1'])}` _(+{r['pct_tp1']:.1f}%/10x)_\n"
             msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{r['pct_tp2']:.1f}%/10x)_\n"
             msj += f"🎯 *TP3:* `{fmt_precio(r['tp3'])}` _(+{r['pct_tp3']:.1f}%/10x)_\n"
+            msj += f"📋 *Condiciones Cumplidas:*\n"
+            for m in r.get('motivos', []):
+                msj += f"  • {m}\n"
 
     enviar_telegram(msj)
 
@@ -644,7 +680,11 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
             msj_rango += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
             msj_rango += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
             msj_rango += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
-            msj_rango += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
+            msj_rango += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n"
+            msj_rango += f"📋 *Condiciones Cumplidas:*\n"
+            for m in op.get('motivos', []):
+                msj_rango += f"  • {m}\n"
+            msj_rango += "\n"
         enviar_telegram(msj_rango)
 
     if entradas_sniper:
@@ -656,7 +696,11 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
             msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
             msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
             msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
-            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
+            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n"
+            msj_sniper += f"📋 *Condiciones Cumplidas:*\n"
+            for m in op.get('motivos', []):
+                msj_sniper += f"  • {m}\n"
+            msj_sniper += "\n"
         enviar_telegram(msj_sniper)
 
     if entradas_sniper_spot:
@@ -668,7 +712,11 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
             msj_spot += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}%)_\n"
             msj_spot += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}%)_\n"
             msj_spot += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}%)_\n"
-            msj_spot += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}%)_\n\n"
+            msj_spot += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}%)_\n"
+            msj_spot += f"📋 *Condiciones Cumplidas:*\n"
+            for m in op.get('motivos', []):
+                msj_spot += f"  • {m}\n"
+            msj_spot += "\n"
         enviar_telegram(msj_spot)
 
 # ==========================================
