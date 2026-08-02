@@ -174,7 +174,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
+            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3,
             'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
             'rr': rr_val
@@ -270,8 +270,9 @@ def analizar_par_completo(symbol, timeframe):
         fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
         fibo_tp3_short = precio - (rango_fibo * 1.618)
 
-        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1, mfi > 50])
-        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
+        # MFI eliminado del conteo de puntos
+        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1])
+        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1])
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
         adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
@@ -404,8 +405,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
-                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100*10,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
@@ -486,7 +487,7 @@ def analizar_cripto_individual(ticker_raw):
             msj += f"• *Temporalidad {tf.upper()}*:\n"
             msj += f"  - Precio: `{fmt_precio(res['precio'])}`\n"
             msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
-            msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
+            msj += f"  - RSI: `{res['rsi']:.1f}`\n" # MFI eliminado de la visualización
             msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
             msj += f"  - Soporte: `{fmt_precio(res['soporte'])}` | Resistencia: `{fmt_precio(res['resistencia'])}`\n\n"
         else:
