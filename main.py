@@ -116,9 +116,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 
-# ==========================================
-# MÓDULO: REBOTE DE RANGO (ULTRA-ESTRICTO)
-# ==========================================
+
 # ==========================================
 # MÓDULO: REBOTE DE RANGO (CON R:R MÍNIMO 1.5)
 # ==========================================
