@@ -118,11 +118,15 @@ def calcular_soportes_resistencias(df, precio_actual):
 # ==========================================
 # NUEVO MÓDULO: REBOTE DE RANGO (MEJORADO)
 # ==========================================
+# ==========================================
+# MÓDULO: REBOTE DE RANGO (ULTRA-ESTRICTO)
+# ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    if h1['adx'] > 32:
+    # Si el ADX es mayor a 24, el mercado tiene dirección y los rangos fallan
+    if h1['adx'] > 18:
         return None
         
     precio_entrada = h1['precio']
@@ -133,15 +137,17 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     
     bb_lower = h1.get('bb_lower', soporte)
     bb_upper = h1.get('bb_upper', resistencia)
+    stoch_k = h1.get('stoch_k', 50)
     
-    condicion_mecha_long = precio_entrada <= (soporte + (atr * 0.8)) or precio_entrada <= bb_lower
-    condicion_mecha_short = precio_entrada >= (resistencia - (atr * 0.8)) or precio_entrada >= bb_upper
+    # Condición estricta: Debe tocar el límite inferior/superior Y el estocástico estar en extremo real
+    condicion_long = (precio_entrada <= bb_lower or precio_entrada <= (soporte + (atr * 0.2))) and stoch_k < 20
+    condicion_short = (precio_entrada >= bb_upper or precio_entrada >= (resistencia - (atr * 0.2))) and stoch_k > 80
 
-    if rsi < 48 and condicion_mecha_long:
-        stop_loss = soporte - (1.0 * atr) if soporte < precio_entrada else precio_entrada * 0.985
-        tp1 = resistencia if resistencia > precio_entrada else precio_entrada * 1.02
-        tp2 = tp1 * 1.01
-        tp3 = tp1 * 1.02
+    if rsi < 45 and condicion_long:
+        stop_loss = soporte - (2.0 * atr) if soporte < precio_entrada else precio_entrada * 0.97
+        tp1 = precio_entrada + (atr * 1.5)
+        tp2 = precio_entrada + (atr * 2.5)
+        tp3 = precio_entrada + (atr * 3.5)
         
         riesgo = precio_entrada - stop_loss
         beneficio = tp1 - precio_entrada
@@ -160,11 +166,11 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'rr': rr_val
         }]
         
-    if rsi > 52 and condicion_mecha_short:
-        stop_loss = resistencia + (1.0 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
-        tp1 = soporte if soporte < precio_entrada else precio_entrada * 0.98
-        tp2 = tp1 * 0.99
-        tp3 = tp1 * 0.98
+    if rsi > 55 and condicion_short:
+        stop_loss = resistencia + (2.0 * atr) if resistencia > precio_entrada else precio_entrada * 1.03
+        tp1 = precio_entrada - (atr * 1.5)
+        tp2 = precio_entrada - (atr * 2.5)
+        tp3 = precio_entrada - (atr * 3.5)
         
         riesgo = stop_loss - precio_entrada
         beneficio = precio_entrada - tp1
