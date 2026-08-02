@@ -115,17 +115,17 @@ def calcular_soportes_resistencias(df, precio_actual):
     
     return soporte, resistencia
 
-# ==========================================
-# NUEVO MÓDULO: REBOTE DE RANGO (MEJORADO)
-# ==========================================
+
 # ==========================================
 # MÓDULO: REBOTE DE RANGO (ULTRA-ESTRICTO)
+# ==========================================
+# ==========================================
+# MÓDULO: REBOTE DE RANGO (CON R:R MÍNIMO 1.5)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    # Si el ADX es mayor a 24, el mercado tiene dirección y los rangos fallan
     if h1['adx'] > 18:
         return None
         
@@ -139,19 +139,29 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     bb_upper = h1.get('bb_upper', resistencia)
     stoch_k = h1.get('stoch_k', 50)
     
-    # Condición estricta: Debe tocar el límite inferior/superior Y el estocástico estar en extremo real
     condicion_long = (precio_entrada <= bb_lower or precio_entrada <= (soporte + (atr * 0.2))) and stoch_k < 20
     condicion_short = (precio_entrada >= bb_upper or precio_entrada >= (resistencia - (atr * 0.2))) and stoch_k > 80
 
     if rsi < 45 and condicion_long:
-        stop_loss = soporte - (2.0 * atr) if soporte < precio_entrada else precio_entrada * 0.97
-        tp1 = precio_entrada + (atr * 1.5)
-        tp2 = precio_entrada + (atr * 2.5)
-        tp3 = precio_entrada + (atr * 3.5)
+        # Stop Loss ajustado y TP1 más lejano para garantizar buen R:R
+        stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.985
+        tp1 = precio_entrada + (atr * 2.5)  # Ampliado a 2.5 ATR para buscar mejor beneficio
+        tp2 = precio_entrada + (atr * 3.5)
+        tp3 = precio_entrada + (atr * 4.5)
         
         riesgo = precio_entrada - stop_loss
         beneficio = tp1 - precio_entrada
-        rr_val = f"1:{(beneficio/riesgo):.1f}" if riesgo > 0 else "1:1"
+        
+        if riesgo <= 0:
+            return None
+            
+        ratio_rr = beneficio / riesgo
+        
+        # EXIGIR QUE EL R:R SEA AL MENOS 1.5
+        if ratio_rr < 1.5:
+            return None
+
+        rr_val = f"1:{ratio_rr:.1f}"
 
         return [{
             'tipo': 'LONG RANGO 🟢',
@@ -167,14 +177,24 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         }]
         
     if rsi > 55 and condicion_short:
-        stop_loss = resistencia + (2.0 * atr) if resistencia > precio_entrada else precio_entrada * 1.03
-        tp1 = precio_entrada - (atr * 1.5)
-        tp2 = precio_entrada - (atr * 2.5)
-        tp3 = precio_entrada - (atr * 3.5)
+        stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
+        tp1 = precio_entrada - (atr * 2.5)  # Ampliado a 2.5 ATR para buscar mejor beneficio
+        tp2 = precio_entrada - (atr * 3.5)
+        tp3 = precio_entrada - (atr * 4.5)
         
         riesgo = stop_loss - precio_entrada
         beneficio = precio_entrada - tp1
-        rr_val = f"1:{(beneficio/riesgo):.1f}" if riesgo > 0 else "1:1"
+        
+        if riesgo <= 0:
+            return None
+            
+        ratio_rr = beneficio / riesgo
+        
+        # EXIGIR QUE EL R:R SEA AL MENOS 1.5
+        if ratio_rr < 1.5:
+            return None
+
+        rr_val = f"1:{ratio_rr:.1f}"
 
         return [{
             'tipo': 'SHORT RANGO 🔴',
@@ -183,9 +203,9 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
+            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3,
-            'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
+            'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'rr': rr_val
         }]
         
