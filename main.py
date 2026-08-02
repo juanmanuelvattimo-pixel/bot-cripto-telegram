@@ -69,19 +69,6 @@ def enviar_telegram(mensaje):
             logging.error(f"Error enviando mensaje a Telegram: {e}")
 
 # ==========================================
-# FUNCIÓN AUXILIAR DE FORMATO DE PRECIO DINÁMICO
-# ==========================================
-def formatear_precio(val):
-    if val is None:
-        return "0.00"
-    if val < 0.0001:
-        return f"{val:.8f}"
-    elif val < 1.0:
-        return f"{val:.6f}"
-    else:
-        return f"{val:.4f}"
-
-# ==========================================
 # 2. INICIALIZAR EXCHANGE
 # ==========================================
 exchange = ccxt.bingx({
@@ -135,14 +122,15 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     bb_lower = h1.get('bb_lower', soporte)
     bb_upper = h1.get('bb_upper', resistencia)
     
+    # Filtro de mechas y confluencia con Bandas de Bollinger
     condicion_mecha_long = precio_entrada <= (soporte + (atr * 0.8)) or precio_entrada <= bb_lower
     condicion_mecha_short = precio_entrada >= (resistencia - (atr * 0.8)) or precio_entrada >= bb_upper
 
     if rsi < 48 and condicion_mecha_long:
-        stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.975
-        tp1 = precio_entrada + (atr * 1.5)
-        tp2 = precio_entrada + (atr * 2.5)
-        tp3 = precio_entrada + (atr * 3.5)
+        stop_loss = soporte - (1.0 * atr) if soporte < precio_entrada else precio_entrada * 0.985
+        tp1 = resistencia if resistencia > precio_entrada else precio_entrada * 1.02
+        tp2 = tp1 * 1.01
+        tp3 = tp1 * 1.02
         
         riesgo = precio_entrada - stop_loss
         beneficio = tp1 - precio_entrada
@@ -162,10 +150,10 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         }]
         
     if rsi > 52 and condicion_mecha_short:
-        stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.025
-        tp1 = precio_entrada - (atr * 1.5)
-        tp2 = precio_entrada - (atr * 2.5)
-        tp3 = precio_entrada - (atr * 3.5)
+        stop_loss = resistencia + (1.0 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
+        tp1 = soporte if soporte < precio_entrada else precio_entrada * 0.98
+        tp2 = tp1 * 0.99
+        tp3 = tp1 * 0.98
         
         riesgo = stop_loss - precio_entrada
         beneficio = precio_entrada - tp1
@@ -178,9 +166,9 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
             'tp3': tp3,
-            'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
+            'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
             'rr': rr_val
         }]
         
@@ -208,6 +196,7 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
+        # Bandas de Bollinger para confluencia en rangos
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
         df['bb_lower'] = indicator_bb.bollinger_lband()
@@ -261,6 +250,19 @@ def analizar_par_completo(symbol, timeframe):
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
+        recent_df = df.tail(30)
+        swing_high = recent_df['high'].max()
+        swing_low = recent_df['low'].min()
+        rango_fibo = swing_high - swing_low
+
+        fibo_tp1_long = precio + (rango_fibo * 0.618)
+        fibo_tp2_long = swing_high if swing_high > precio else (precio + rango_fibo)
+        fibo_tp3_long = precio + (rango_fibo * 1.618)
+
+        fibo_tp1_short = precio - (rango_fibo * 0.618)
+        fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
+        fibo_tp3_short = precio - (rango_fibo * 1.618)
+
         puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1, mfi > 50])
         puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
 
@@ -292,6 +294,8 @@ def analizar_par_completo(symbol, timeframe):
             'resistencia': resistencia_key,
             'bb_upper': df['bb_upper'].iloc[-1],
             'bb_lower': df['bb_lower'].iloc[-1],
+            'fibo_long': {'tp1': fibo_tp1_long, 'tp2': fibo_tp2_long, 'tp3': fibo_tp3_long},
+            'fibo_short': {'tp1': fibo_tp1_short, 'tp2': fibo_tp2_short, 'tp3': fibo_tp3_short}
         }
     except Exception as e:
         return None
@@ -327,8 +331,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': sr['rr']
             })
 
-    # 2. Sniper 10X (Stop Loss técnico puro basado en Soporte y ATR, sin topes rígidos)
-    adx_aprobado = h1['adx'] >= 26          
+    # 2. Sniper 10X (Implementación de Pullbacks)
+    adx_aprobado = h1['adx'] >= 22          
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
@@ -343,18 +347,21 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_long_10x:
-        # SL técnico holgado detrás del soporte real usando ATR
-        sl_final = h1['soporte'] - (1.5 * atr_act)
+        sl_tecnico = h1['soporte'] - (1.5 * atr_act)
+        sl_max_10x = precio_act * 0.965
+        sl_final = max(sl_tecnico, sl_max_10x)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
-        tp1 = precio_act + (atr_act * 1.5)
-        tp2 = precio_act + (atr_act * 2.5)
-        tp3 = precio_act + (atr_act * 3.5)
+        resistencia_objetivo = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 3))
+        fibo = h1['fibo_long']
+        tp1 = min(resistencia_objetivo, max(fibo['tp1'], precio_act + (atr_act * 1.5)))
+        tp2 = max(fibo['tp2'], tp1 * 1.015)
+        tp3 = max(fibo['tp3'], tp2 * 1.015)
 
         riesgo = precio_act - sl_final
         beneficio = tp1 - precio_act
         
-        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.3:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -373,18 +380,21 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_short_10x:
-        # SL técnico holgado detrás de la resistencia real usando ATR
-        sl_final = h1['resistencia'] + (1.5 * atr_act)
+        sl_tecnico = h1['resistencia'] + (1.5 * atr_act)
+        sl_max_10x = precio_act * 1.035
+        sl_final = min(sl_tecnico, sl_max_10x)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
-        tp1 = precio_act - (atr_act * 1.5)
-        tp2 = precio_act - (atr_act * 2.5)
-        tp3 = precio_act - (atr_act * 3.5)
+        soporte_objetivo = h1['soporte'] if h1['soporte'] < precio_act else (precio_act - (atr_act * 3))
+        fibo = h1['fibo_short']
+        tp1 = max(soporte_objetivo, min(fibo['tp1'], precio_act - (atr_act * 1.5)))
+        tp2 = min(fibo['tp2'], tp1 * 0.985)
+        tp3 = min(fibo['tp3'], tp2 * 0.985)
 
         riesgo = sl_final - precio_act
         beneficio = precio_act - tp1
 
-        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.3:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -395,11 +405,11 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
 
-    # 3. Sniper Spot (Validación de Estocástico y TPs por ATR)
+    # 3. Sniper Spot (Validación de Estocástico)
     h4_rsi_valido = h4['rsi'] < 70
-    h4_adx_valido = h4['adx'] >= 26
+    h4_adx_valido = h4['adx'] >= 22
     h1_rsi_valido = h1['rsi'] < 70
-    h1_adx_valido = h1['adx'] >= 26
+    h1_adx_valido = h1['adx'] >= 22
 
     estocastico_valido_spot = h1['stoch_k'] < 35
 
@@ -414,14 +424,16 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_spot = h1['soporte'] - (1.5 * atr_act)
         pct_sl_spot = abs((precio_act - sl_spot) / precio_act) * 100
         
-        tp1_s = precio_act + (atr_act * 2.0)
-        tp2_s = precio_act + (atr_act * 3.5)
-        tp3_s = precio_act + (atr_act * 5.0)
+        resistencia_spot = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 4))
+        fibo_s = h1['fibo_long']
+        tp1_s = min(resistencia_spot, max(fibo_s['tp1'], precio_act + (atr_act * 2)))
+        tp2_s = max(fibo_s['tp2'], tp1_s * 1.02)
+        tp3_s = max(fibo_s['tp3'], tp2_s * 1.02)
 
         riesgo_s = precio_act - sl_spot
         beneficio_s = tp1_s - precio_act
         
-        if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.2:
+        if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
             spot_res.append({
                 'symbol': simbolo_limpio,
                 'precio': precio_act, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
@@ -452,7 +464,7 @@ def obtener_pares_top():
         ]
         
         pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
-        return [item['symbol'] for item in pares_usdt[:150]]
+        return [item['symbol'] for item in pares_usdt[:250]]
     except Exception as e:
         logging.error(f"Error obteniendo pares top: {e}")
         return []
@@ -468,11 +480,11 @@ def analizar_cripto_individual(ticker_raw):
         res = analizar_par_completo(ticker, tf)
         if res is not None:
             msj += f"• *Temporalidad {tf.upper()}*:\n"
-            msj += f"  - Precio: `{formatear_precio(res['precio'])}`\n"
+            msj += f"  - Precio: `{res['precio']:.4f}`\n"
             msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
             msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
             msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
-            msj += f"  - Soporte: `{formatear_precio(res['soporte'])}` | Resistencia: `{formatear_precio(res['resistencia'])}`\n\n"
+            msj += f"  - Soporte: `{res['soporte']:.4f}` | Resistencia: `{res['resistencia']:.4f}`\n\n"
         else:
             msj += f"• *Temporalidad {tf.upper()}*: Sin datos suficientes.\n\n"
             
@@ -500,11 +512,11 @@ def evaluar_trade_manual(ticker_raw):
         for op in sniper:
             msj += f"⚡ *ESTRATEGIA SNIPER 10X {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
             msj += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
-            msj += f"💵 *Entrada:* `{formatear_precio(op['precio'])}`\n"
-            msj += f"🛑 *Stop Loss:* `{formatear_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
-            msj += f"🎯 *TP1:* `{formatear_precio(op['tp1'])}`\n"
-            msj += f"🎯 *TP2:* `{formatear_precio(op['tp2'])}`\n"
-            msj += f"🎯 *TP3:* `{formatear_precio(op['tp3'])}`\n\n"
+            msj += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
+            msj += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
+            msj += f"🎯 *TP1:* `{op['tp1']:.4f}`\n"
+            msj += f"🎯 *TP2:* `{op['tp2']:.4f}`\n"
+            msj += f"🎯 *TP3:* `{op['tp3']:.4f}`\n\n"
     else:
         msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales.\n\n"
 
@@ -512,22 +524,22 @@ def evaluar_trade_manual(ticker_raw):
         for op in spot:
             msj += f"🎯 *ESTRATEGIA SNIPER SPOT: APROBADA* _(R:R {op['rr']})_\n"
             msj += f"🔮 *SuperTrend (1H):* `{op['supertrend']}`\n"
-            msj += f"💵 *Precio Entrada:* `{formatear_precio(op['precio'])}`\n"
-            msj += f"🛑 *Stop Loss:* `{formatear_precio(op['sl'])}` _(-{op['pct_sl']:.1f}%)_\n"
-            msj += f"🎯 *TP1:* `{formatear_precio(op['tp1'])}`\n"
-            msj += f"🎯 *TP2:* `{formatear_precio(op['tp2'])}`\n"
-            msj += f"🎯 *TP3:* `{formatear_precio(op['tp3'])}`\n\n"
+            msj += f"💵 *Precio Entrada:* `{op['precio']:.4f}`\n"
+            msj += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}%)_\n"
+            msj += f"🎯 *TP1:* `{op['tp1']:.4f}`\n"
+            msj += f"🎯 *TP2:* `{op['tp2']:.4f}`\n"
+            msj += f"🎯 *TP3:* `{op['tp3']:.4f}`\n\n"
     else:
         msj += "⚪ *SNIPER SPOT:* No califica para trade en este momento.\n\n"
 
     if rango:
         for r in rango:
             msj += f"⚡ *{r['tipo']}*\n"
-            msj += f"💵 *Entrada:* `{formatear_precio(r['precio'])}`\n"
-            msj += f"🛑 *Stop Loss:* `{formatear_precio(r['sl'])}`\n"
-            msj += f"🎯 *TP1:* `{formatear_precio(r['tp1'])}`\n"
-            msj += f"🎯 *TP2:* `{formatear_precio(r['tp2'])}`\n"
-            msj += f"🎯 *TP3:* `{formatear_precio(r['tp3'])}`\n"
+            msj += f"💵 *Entrada:* `{r['precio']:.4f}`\n"
+            msj += f"🛑 *Stop Loss:* `{r['sl']:.4f}`\n"
+            msj += f"🎯 *TP1:* `{r['tp1']:.4f}`\n"
+            msj += f"🎯 *TP2:* `{r['tp2']:.4f}`\n"
+            msj += f"🎯 *TP3:* `{r['tp3']:.4f}`\n"
 
     enviar_telegram(msj)
 
@@ -583,9 +595,9 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
         msj_rango = "🤖 **BOT ACTIVO ✅**\n\n⚡ *REBOTES EN RANGO DETECTADOS:* ⚡\n\n"
         for op in entradas_rango[:5]:
             msj_rango += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
-            msj_rango += f"💵 *Entrada:* `{formatear_precio(op['precio'])}`\n"
-            msj_rango += f"🛑 *Stop Loss:* `{formatear_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
-            msj_rango += f"🎯 *TP1:* `{formatear_precio(op['tp1'])}`\n🎯 *TP2:* `{formatear_precio(op['tp2'])}`\n🎯 *TP3:* `{formatear_precio(op['tp3'])}`\n\n"
+            msj_rango += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
+            msj_rango += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
+            msj_rango += f"🎯 *TP1:* `{op['tp1']:.4f}`\n🎯 *TP2:* `{op['tp2']:.4f}`\n🎯 *TP3:* `{op['tp3']:.4f}`\n\n"
         enviar_telegram(msj_rango)
 
     if entradas_sniper:
@@ -593,9 +605,9 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
         for op in entradas_sniper[:5]:
             msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
-            msj_sniper += f"💵 *Entrada:* `{formatear_precio(op['precio'])}`\n"
-            msj_sniper += f"🛑 *Stop Loss:* `{formatear_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
-            msj_sniper += f"🎯 *TP1:* `{formatear_precio(op['tp1'])}`\n🎯 *TP2:* `{formatear_precio(op['tp2'])}`\n🎯 *TP3:* `{formatear_precio(op['tp3'])}`\n\n"
+            msj_sniper += f"💵 *Entrada:* `{op['precio']:.4f}`\n"
+            msj_sniper += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
+            msj_sniper += f"🎯 *TP1:* `{op['tp1']:.4f}`\n🎯 *TP2:* `{op['tp2']:.4f}`\n🎯 *TP3:* `{op['tp3']:.4f}`\n\n"
         enviar_telegram(msj_sniper)
 
     if entradas_sniper_spot:
@@ -603,9 +615,9 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
         for op in entradas_sniper_spot[:5]:
             msj_spot += f"🪙 *{op['symbol']}* -> *LONG SPOT 🟢* _(R:R {op['rr']})_\n"
             msj_spot += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
-            msj_spot += f"💵 *Precio Entrada:* `{formatear_precio(op['precio'])}`\n"
-            msj_spot += f"🛑 *Stop Loss:* `{formatear_precio(op['sl'])}` _(-{op['pct_sl']:.1f}%)_\n"
-            msj_spot += f"🎯 *TP1:* `{formatear_precio(op['tp1'])}`\n🎯 *TP2:* `{formatear_precio(op['tp2'])}`\n🎯 *TP3:* `{formatear_precio(op['tp3'])}`\n\n"
+            msj_spot += f"💵 *Precio Entrada:* `{op['precio']:.4f}`\n"
+            msj_spot += f"🛑 *Stop Loss:* `{op['sl']:.4f}` _(-{op['pct_sl']:.1f}%)_\n"
+            msj_spot += f"🎯 *TP1:* `{op['tp1']:.4f}`\n🎯 *TP2:* `{op['tp2']:.4f}`\n🎯 *TP3:* `{op['tp3']:.4f}`\n\n"
         enviar_telegram(msj_spot)
 
 # ==========================================
@@ -737,7 +749,7 @@ if __name__ == "__main__":
         if '1h' in analisis_btc:
             precio_btc = analisis_btc['1h']['precio']
             msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
-            msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{formatear_precio(precio_btc)}` USDT\n\n"
+            msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{precio_btc:.2f}` USDT\n\n"
             msj_inicio += "📊 **Estado en Temporalidades (Estrategia Bot):**\n"
             
             for tf in temporalidades:
