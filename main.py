@@ -24,8 +24,11 @@ logging.basicConfig(
 def fmt_precio(val):
     if val is None:
         return "0"
-    # Muestra hasta 8 decimales eliminando ceros innecesarios al final
-    return f"{val:.8f}".rstrip('0').rstrip('.')
+    # Si vale menos de 0.01 (1 centavo), muestra 8 decimales. Si vale más, muestra 4 decimales máximo.
+    if abs(val) < 0.01:
+        return f"{val:.8f}".rstrip('0').rstrip('.')
+    else:
+        return f"{val:.4f}".rstrip('0').rstrip('.')
 
 # ==========================================
 # 1. CONFIGURACIÓN DE TELEGRAM Y FILTRO MULTI-MENSAJE
@@ -341,7 +344,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
-    # PULLBACK FLEXIBLE: Acepta precio sobre la EMA 10, EMA 20 o entre medio de ambas
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
 
@@ -354,7 +356,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.0 * atr_act)
-        sl_max_10x = precio_act * 0.982  # Tope de ~1.8% en spot (~18% a 10x)
+        sl_max_10x = precio_act * 0.982  
         sl_final = max(sl_tecnico, sl_max_10x)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
@@ -385,7 +387,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if gatillo_short_10x:
         sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
-        sl_max_10x = precio_act * 1.018  # Tope de ~1.8% en spot (~18% a 10x)
+        sl_max_10x = precio_act * 1.018  
         sl_final = min(sl_tecnico, sl_max_10x)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
@@ -401,7 +403,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}"
@@ -413,8 +415,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     h1_adx_valido = h1['adx'] >= 22
 
     estocastico_valido_spot = h1['stoch_k'] < 35
-
-    # SPOT FLEXIBLE: Canal idéntico entre la EMA 10 y la EMA 20
     pullback_spot_valido = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
 
     gatillo_spot = (
@@ -458,7 +458,7 @@ def obtener_pares_top():
     try:
         exchange.load_markets()
         tickers = exchange.fetch_tickers()
-        estables_ignoradas = ['USDC', 'USDT', 'BUSD', 'FDUSD', 'EUR', 'DAI', 'TUSD']
+        estables_ignoradas = ['USDC', 'USDT', 'BUSD', 'FDUSD', 'EUR', 'DAI', 'TUSD', 'USD1']
         
         pares_usdt = [
             {'symbol': symbol, 'volume': ticker['quoteVolume']}
@@ -466,6 +466,7 @@ def obtener_pares_top():
             if symbol.endswith('/USDT') 
             and ticker.get('quoteVolume') is not None
             and symbol.split('/')[0] not in estables_ignoradas
+            and not symbol.split('/')[0].startswith('USD1')
         ]
         
         pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
@@ -519,9 +520,9 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
             msj += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
-            msj += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}`\n"
-            msj += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}`\n"
-            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}`\n\n"
+            msj += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
+            msj += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
+            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
     else:
         msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales.\n\n"
 
@@ -531,9 +532,9 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"🔮 *SuperTrend (1H):* `{op['supertrend']}`\n"
             msj += f"💵 *Precio Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}%)_\n"
-            msj += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}`\n"
-            msj += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}`\n"
-            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}`\n\n"
+            msj += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}%)_\n"
+            msj += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}%)_\n"
+            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}%)_\n\n"
     else:
         msj += "⚪ *SNIPER SPOT:* No califica para trade en este momento.\n\n"
 
@@ -542,9 +543,9 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"⚡ *{r['tipo']}*\n"
             msj += f"💵 *Entrada:* `{fmt_precio(r['precio'])}`\n"
             msj += f"🛑 *Stop Loss:* `{fmt_precio(r['sl'])}`\n"
-            msj += f"🎯 *TP1:* `{fmt_precio(r['tp1'])}`\n"
-            msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}`\n"
-            msj += f"🎯 *TP3:* `{fmt_precio(r['tp3'])}`\n"
+            msj += f"🎯 *TP1:* `{fmt_precio(r['tp1'])}` _(+{r['pct_tp1']:.1f}%/10x)_\n"
+            msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{r['pct_tp2']:.1f}%/10x)_\n"
+            msj += f"🎯 *TP3:* `{fmt_precio(r['tp3'])}` _(+{r['pct_tp3']:.1f}%/10x)_\n"
 
     enviar_telegram(msj)
 
@@ -602,7 +603,9 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
             msj_rango += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_rango += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj_rango += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
-            msj_rango += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}`\n🎯 *TP2:* `{fmt_precio(op['tp2'])}`\n🎯 *TP3:* `{fmt_precio(op['tp3'])}`\n\n"
+            msj_rango += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
+            msj_rango += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
+            msj_rango += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
         enviar_telegram(msj_rango)
 
     if entradas_sniper:
@@ -612,7 +615,9 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
             msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
             msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}% en 10x)_\n"
-            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}`\n🎯 *TP2:* `{fmt_precio(op['tp2'])}`\n🎯 *TP3:* `{fmt_precio(op['tp3'])}`\n\n"
+            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}% en 10x)_\n"
+            msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}% en 10x)_\n"
+            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}% en 10x)_\n\n"
         enviar_telegram(msj_sniper)
 
     if entradas_sniper_spot:
@@ -622,7 +627,9 @@ def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_ra
             msj_spot += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
             msj_spot += f"💵 *Precio Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj_spot += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.1f}%)_\n"
-            msj_spot += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}`\n🎯 *TP2:* `{fmt_precio(op['tp2'])}`\n🎯 *TP3:* `{fmt_precio(op['tp3'])}`\n\n"
+            msj_spot += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.1f}%)_\n"
+            msj_spot += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.1f}%)_\n"
+            msj_spot += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.1f}%)_\n\n"
         enviar_telegram(msj_spot)
 
 # ==========================================
