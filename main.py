@@ -115,7 +115,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# MÓDULO: REBOTE DE RANGO (CON R:R MÍNIMO 1.5)
+# MÓDULO: REBOTE DE RANGO (CON FILTRO DE CIERRE DE VELA)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
@@ -134,8 +134,17 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     bb_upper = h1.get('bb_upper', resistencia)
     stoch_k = h1.get('stoch_k', 50)
     
-    condicion_long = (precio_entrada <= bb_lower or precio_entrada <= (soporte + (atr * 0.2))) and stoch_k < 20
-    condicion_short = (precio_entrada >= bb_upper or precio_entrada >= (resistencia - (atr * 0.2))) and stoch_k > 80
+    # Datos de la vela cerrada anterior para validar el rechazo real
+    close_ante = h1.get('close_ante', precio_entrada)
+    low_ante = h1.get('low_ante', precio_entrada)
+    high_ante = h1.get('high_ante', precio_entrada)
+
+    # Filtro de cierre de vela: La mecha pudo tocar el soporte/inferior, pero el cierre confirma el rebote
+    confirma_cierre_long = close_ante >= soporte or close_ante >= bb_lower
+    confirma_cierre_short = close_ante <= resistencia or close_ante <= bb_upper
+
+    condicion_long = (low_ante <= bb_lower or low_ante <= (soporte + (atr * 0.2))) and stoch_k < 20 and confirma_cierre_long
+    condicion_short = (high_ante >= bb_upper or high_ante >= (resistencia - (atr * 0.2))) and stoch_k > 80 and confirma_cierre_short
 
     if rsi < 45 and condicion_long:
         stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.985
@@ -297,6 +306,10 @@ def analizar_par_completo(symbol, timeframe):
 
         return {
             'precio': precio,
+            'open_ante': df['open'].iloc[-2],
+            'close_ante': df['close'].iloc[-2],
+            'high_ante': df['high'].iloc[-2],
+            'low_ante': df['low'].iloc[-2],
             'atr': atr,
             'rsi': rsi,
             'mfi': mfi,
@@ -435,7 +448,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}"
@@ -511,7 +524,7 @@ def analizar_cripto_individual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     simbolo_limpio = ticker.split('/')[0]
     
-    temporalidades = ['15m', '1h', '4h', '1d', '1w'] # Incluye 15m para consultas individuales
+    temporalidades = ['15m', '1h', '4h', '1d', '1w']
     msj = f"🤖 **BOT ACTIVO ✅**\n\n📊 *ANÁLISIS TÉCNICO DETALLADO: ${simbolo_limpio}*\n\n"
     
     for tf in temporalidades:
@@ -824,3 +837,4 @@ if __name__ == "__main__":
         except Exception:
             pass
         analizar_mercado()
+```[cite: 3]
