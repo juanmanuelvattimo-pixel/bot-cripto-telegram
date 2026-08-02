@@ -121,7 +121,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    # ADX estricto para asegurar rango real
     if h1['adx'] > 15:
         return None
         
@@ -136,24 +135,18 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     stoch_k = h1.get('stoch_k', 50)
     stoch_d = h1.get('stoch_d', 50)
     
-    # Cruce del estocástico en zonas extremas
     cruce_stoch_long = (stoch_k < 25) and (stoch_k > stoch_d)
     cruce_stoch_short = (stoch_k > 75) and (stoch_k < stoch_d)
 
-    # =========================================================================
-    # MODIFICACIÓN CLAVE:
-    # 1. El precio debe estar DENTRO de la banda (precio_entrada >= bb_lower / precio_entrada <= bb_upper)
-    # 2. Pero al mismo tiempo debe mantenerse en la zona baja/alta respetando el soporte/resistencia con el ATR.
-    # =========================================================================
     condicion_long = (
-        (precio_entrada >= bb_lower) and  # <-- Exigimos que esté DENTRO de la banda inferior (no por fuera)
-        (precio_entrada <= (soporte + (atr * 0.4))) and # Zona cercana al soporte
+        (precio_entrada >= bb_lower) and  
+        (precio_entrada <= (soporte + (atr * 0.4))) and 
         cruce_stoch_long
     )
     
     condicion_short = (
-        (precio_entrada <= bb_upper) and  # <-- Exigimos que esté DENTRO de la banda superior (no por fuera)
-        (precio_entrada >= (resistencia - (atr * 0.4))) and # Zona cercana a la resistencia
+        (precio_entrada <= bb_upper) and  
+        (precio_entrada >= (resistencia - (atr * 0.4))) and 
         cruce_stoch_short
     )
 
@@ -346,7 +339,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     h1 = analisis_tf['1h']
     h4 = analisis_tf['4h']
     d1 = analisis_tf['1d']
-    m15 = analisis_tf['15m'] # <- Integrado temporalidad de 15m (Punto 4)
+    m15 = analisis_tf['15m']
     
     precio_act = h1['precio']
     atr_act = h1['atr']
@@ -374,24 +367,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
 
-    # =========================================================================
-    # NUEVOS FILTROS AGREGADOS:
-    # Punto 1: Cruce activo del Estocástico en 1H dentro de la zona
-    # Punto 4: Confirmación estructural en 15m (precio > ema10 de 15m para long, etc.)
-    # =========================================================================
     filtro_estocastico_long = h1['cruce_alcista'] or h1['stoch_k'] < 35
     filtro_estocastico_short = h1['cruce_bajista'] or h1['stoch_k'] > 65
 
     filtro_15m_long = m15['precio'] > m15['ema10'] or m15['es_alcista']
     filtro_15m_short = m15['precio'] < m15['ema10'] or m15['es_bajista']
 
+    # --- SNIPER 10X (INTACTO COMO LO DEJASTE) ---
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
         adx_aprobado and rsi_long_valido and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
-        filtro_estocastico_long and  # <- Punto 1 aplicado
-        filtro_15m_long             # <- Punto 4 aplicado
+        filtro_estocastico_long and  
+        filtro_15m_long             
     )
 
     if gatillo_long_10x:
@@ -423,8 +412,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         adx_aprobado and rsi_short_valido and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
-        filtro_estocastico_short and # <- Punto 1 aplicado
-        filtro_15m_short            # <- Punto 4 aplicado
+        filtro_estocastico_short and 
+        filtro_15m_short            
     )
 
     if gatillo_short_10x:
@@ -445,24 +434,31 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}"
             })
 
-    h4_rsi_valido = h4['rsi'] < 70
-    h4_adx_valido = h4['adx'] >= 22
-    h1_rsi_valido = h1['rsi'] < 70
-    h1_adx_valido = h1['adx'] >= 22
+    # =========================================================================
+    # MODIFICACIÓN: FILTROS RELAJADOS PARA SNIPER SPOT
+    # - Se relaja el ADX mínimo en H4 y H1 (ahora >= 15 en lugar de 22)
+    # - Se amplía el rango del RSI (ahora permite hasta 75)
+    # - Se flexibiliza el pullback de las medias móviles y el estocástico
+    # =========================================================================
+    h4_rsi_valido_spot = h4['rsi'] < 75
+    h4_adx_valido_spot = h4['adx'] >= 15
+    h1_rsi_valido_spot = h1['rsi'] < 75
+    h1_adx_valido_spot = h1['adx'] >= 15
 
-    estocastico_valido_spot = h1['stoch_k'] < 35
-    pullback_spot_valido = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
+    estocastico_valido_spot = h1['stoch_k'] < 50  # Ampliado de 35 a 50
+    # Pullback más flexible: acepta si el precio está cerca de la EMA20 o por encima
+    pullback_spot_valido = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
 
     gatillo_spot = (
         d1['es_alcista'] and
-        h4_adx_valido and h4_rsi_valido and (h4['supertrend_estado'] == "🟢 ALCISTA") and
-        h1_adx_valido and h1_rsi_valido and (h1['supertrend_estado'] == "🟢 ALCISTA") and 
+        h4_adx_valido_spot and h4_rsi_valido_spot and (h4['supertrend_estado'] == "🟢 ALCISTA") and
+        h1_adx_valido_spot and h1_rsi_valido_spot and (h1['supertrend_estado'] == "🟢 ALCISTA") and 
         estocastico_valido_spot and
         pullback_spot_valido
     )
@@ -480,7 +476,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         riesgo_s = precio_act - sl_spot
         beneficio_s = tp1_s - precio_act
         
-        if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.3:
+        # Se reduce ligeramente el R:R mínimo exigido en spot para capturar más oportunidades (de 1.3 a 1.1)
+        if riesgo_s > 0 and (beneficio_s / riesgo_s) >= 1.1:
             spot_res.append({
                 'symbol': simbolo_limpio,
                 'precio': precio_act, 'sl': sl_spot, 'pct_sl': pct_sl_spot,
@@ -521,7 +518,7 @@ def analizar_cripto_individual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     simbolo_limpio = ticker.split('/')[0]
     
-    temporalidades = ['15m', '1h', '4h', '1d', '1w'] # Incluye 15m para consultas individuales
+    temporalidades = ['15m', '1h', '4h', '1d', '1w']
     msj = f"🤖 **BOT ACTIVO ✅**\n\n📊 *ANÁLISIS TÉCNICO DETALLADO: ${simbolo_limpio}*\n\n"
     
     for tf in temporalidades:
