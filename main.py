@@ -328,7 +328,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             })
 
     # 2. Sniper 10X (Stop Loss técnico puro basado en Soporte y ATR, sin topes rígidos)
-    adx_aprobado = h1['adx'] >= 26          
+    adx_aprobado = h1['adx'] >= 22          
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
@@ -397,9 +397,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     # 3. Sniper Spot (Validación de Estocástico y TPs por ATR)
     h4_rsi_valido = h4['rsi'] < 70
-    h4_adx_valido = h4['adx'] >= 26
+    h4_adx_valido = h4['adx'] >= 22
     h1_rsi_valido = h1['rsi'] < 70
-    h1_adx_valido = h1['adx'] >= 26
+    h1_adx_valido = h1['adx'] >= 22
 
     estocastico_valido_spot = h1['stoch_k'] < 35
 
@@ -761,7 +761,7 @@ if __name__ == "__main__":
     analizar_mercado()
     
     while True:
-        time.sleep(7200)
+        time.sleep(3600)
         try:
             with open(lock_file, "w") as f:
                 f.write(str(os.getpid()))
