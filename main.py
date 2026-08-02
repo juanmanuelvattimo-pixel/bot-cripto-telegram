@@ -174,7 +174,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp1': tp1,
             'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
             'tp2': tp2,
-            'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
+            'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
             'tp3': tp3,
             'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100*10,
             'rr': rr_val
@@ -270,9 +270,8 @@ def analizar_par_completo(symbol, timeframe):
         fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
         fibo_tp3_short = precio - (rango_fibo * 1.618)
 
-        # MFI eliminado del conteo de puntos
-        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1])
-        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1])
+        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1, mfi > 50])
+        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
         adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
@@ -285,8 +284,8 @@ def analizar_par_completo(symbol, timeframe):
             'adx': adx,
             'adx_direccion': adx_direccion,
             'adx_fuerza': adx_fuerza,
-            'es_alcista': puntos_alcistas >= 2,
-            'es_bajista': puntos_bajistas >= 2,
+            'es_alcista': puntos_alcistas >= 3,
+            'es_bajista': puntos_bajistas >= 3,
             'cruce_alcista': cruce_alcista_estocastico,
             'cruce_bajista': cruce_bajista_estocastico,
             'supertrend_buy': supertrend_buy,
@@ -309,7 +308,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (DRY)
+# MÓDULO UNIFICADO DE EVALUACIÓN (DRY - CORREGIDO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
@@ -353,21 +352,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_long_10x:
-        sl_tecnico = h1['soporte'] - (1.5 * atr_act)
-        sl_max_10x = precio_act * 0.965
+        sl_tecnico = h1['soporte'] - (1.0 * atr_act)
+        sl_max_10x = precio_act * 0.982  # Tope de ~1.8% en spot (~18% a 10x)
         sl_final = max(sl_tecnico, sl_max_10x)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
-        resistencia_objetivo = h1['resistencia'] if h1['resistencia'] > precio_act else (precio_act + (atr_act * 3))
-        fibo = h1['fibo_long']
-        tp1 = min(resistencia_objetivo, max(fibo['tp1'], precio_act + (atr_act * 1.5)))
-        tp2 = max(fibo['tp2'], tp1 * 1.015)
-        tp3 = max(fibo['tp3'], tp2 * 1.015)
-
+        # Take Profits acotados por múltiplos del riesgo (R:R saludable)
         riesgo = precio_act - sl_final
+        tp1 = precio_act + (riesgo * 1.5)
+        tp2 = precio_act + (riesgo * 2.5)
+        tp3 = precio_act + (riesgo * 3.5)
+
         beneficio = tp1 - precio_act
         
-        if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -386,21 +384,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_short_10x:
-        sl_tecnico = h1['resistencia'] + (1.5 * atr_act)
-        sl_max_10x = precio_act * 1.035
+        sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
+        sl_max_10x = precio_act * 1.018  # Tope de ~1.8% en spot (~18% a 10x)
         sl_final = min(sl_tecnico, sl_max_10x)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
-        soporte_objetivo = h1['soporte'] if h1['soporte'] < precio_act else (precio_act - (atr_act * 3))
-        fibo = h1['fibo_short']
-        tp1 = max(soporte_objetivo, min(fibo['tp1'], precio_act - (atr_act * 1.5)))
-        tp2 = min(fibo['tp2'], tp1 * 0.985)
-        tp3 = min(fibo['tp3'], tp2 * 0.985)
-
+        # Take Profits acotados por múltiplos del riesgo
         riesgo = sl_final - precio_act
+        tp1 = precio_act - (riesgo * 1.5)
+        tp2 = precio_act - (riesgo * 2.5)
+        tp3 = precio_act - (riesgo * 3.5)
+
         beneficio = precio_act - tp1
 
-        if riesgo > 0 and (beneficio / riesgo) >= 1.3:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -487,7 +484,7 @@ def analizar_cripto_individual(ticker_raw):
             msj += f"• *Temporalidad {tf.upper()}*:\n"
             msj += f"  - Precio: `{fmt_precio(res['precio'])}`\n"
             msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
-            msj += f"  - RSI: `{res['rsi']:.1f}`\n" # MFI eliminado de la visualización
+            msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
             msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
             msj += f"  - Soporte: `{fmt_precio(res['soporte'])}` | Resistencia: `{fmt_precio(res['resistencia'])}`\n\n"
         else:
