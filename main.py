@@ -375,17 +375,17 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    adx_aprobado_long = h1['adx'] >= 15 and h1['rsi'] > 40 and h1['rsi'] < 68
-    adx_aprobado_short = h1['adx'] >= 15 and h1['rsi'] > 32 and h1['rsi'] < 60
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 40 and h1['rsi'] < 68
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 32 and h1['rsi'] < 60
 
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.015) and h1['precio'] >= (h1['ema20'] * 0.985)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.985) and h1['precio'] <= (h1['ema20'] * 1.015)
 
-    filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 40
-    filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 60
+    filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 45
+    filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 55
 
-    filtro_15m_long = m15['precio'] > m15['ema10'] or m15['es_alcista']
-    filtro_15m_short = m15['precio'] < m15['ema10'] or m15['es_bajista']
+    filtro_15m_long = m15['precio'] > m15['ema20']
+    filtro_15m_short = m15['precio'] < m15['ema20']
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and  
