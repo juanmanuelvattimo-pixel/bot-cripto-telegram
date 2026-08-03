@@ -879,7 +879,7 @@ if __name__ == "__main__":
     analizar_mercado()
     
     while True:
-        time.sleep(7200)
+        time.sleep(3600)
         try:
             with open(lock_file, "w") as f:
                 f.write(str(os.getpid()))
