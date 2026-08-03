@@ -150,9 +150,13 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         cruce_stoch_short
     )
 
-    if rsi < 48 and condicion_long:
-        # SL dinámico basado en volatilidad real (ATR) y soporte
-        stop_loss = soporte - (1.2 * atr)
+   if rsi < 48 and condicion_long:
+        # SL dinámico técnico basado en soporte y ATR
+        stop_loss_tecnico = soporte - (1.0 * atr)
+        # Tope estricto de máximo 2% de distancia en el precio
+        stop_loss_maximo = precio_entrada * 0.98  
+        stop_loss = max(stop_loss_tecnico, stop_loss_maximo)
+        
         tp1 = precio_entrada + (atr * 2.0)
         tp2 = precio_entrada + (atr * 3.0)
         tp3 = precio_entrada + (atr * 4.0)
@@ -164,7 +168,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             return None
             
         ratio_rr = beneficio / riesgo
-        if ratio_rr < 1.2:  # Permite ratios desde 1.2 en adelante (1.5, 1.8, etc.)
+        if ratio_rr < 1.2:
             return None
 
         return [{
@@ -184,8 +188,10 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         }]
         
     if rsi > 52 and condicion_short:
-        # SL dinámico basado en volatilidad real (ATR) y resistencia
-        stop_loss = resistencia + (1.2 * atr)
+        stop_loss_tecnico = resistencia + (1.0 * atr)
+        stop_loss_maximo = precio_entrada * 1.02  # Tope estricto de máximo 2% arriba
+        stop_loss = min(stop_loss_tecnico, stop_loss_maximo)
+        
         tp1 = precio_entrada - (atr * 2.0)
         tp2 = precio_entrada - (atr * 3.0)
         tp3 = precio_entrada - (atr * 4.0)
@@ -197,7 +203,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             return None
             
         ratio_rr = beneficio / riesgo
-        if ratio_rr < 1.2:  # Permite ratios desde 1.2 en adelante
+        if ratio_rr < 1.2:
             return None
 
         return [{
@@ -206,7 +212,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'pct_sl': abs((stop_loss - precio_entrada)/precio_entrada)*100,
             'tp1': tp1, 'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100,
             'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100,
-            'tp3': tp3, 'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100,
+            'tp3': tp3, 'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100,
             'rr': f"1:{ratio_rr:.2f}",
             'motivos': [
                 f"ADX óptimo para rango ({h1['adx']:.1f} < 22)",
@@ -215,8 +221,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
                 f"Cruce bajista de Estocástico (K: {stoch_k:.1f} < D: {stoch_d:.1f})"
             ]
         }]
-        
-    return None
 
 # ==========================================
 # 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
@@ -397,15 +401,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_long_10x:
-        # SL Dinámico basado en el soporte técnico y la volatilidad ATR real
-        sl_final = h1['soporte'] - (1.0 * atr_act)
-        pct_sl = abs((precio_act - sl_final) / precio_act) * 100
+        sl_tecnico = h1['soporte'] - (1.0 * atr_act)
+        sl_max_2pct = precio_entrada * 0.98  # Límite estricto del 2%
+        sl_final = max(sl_tecnico, sl_max_2pct)
+        pct_sl = abs((precio_entrada - sl_final) / precio_entrada) * 100
         
-        riesgo = precio_act - sl_final
-        # Take Profits dinámicos basados en ratios escalonados reales (ej. 1.5, 2.5, 3.5)
-        tp1 = precio_act + (riesgo * 1.5)
-        tp2 = precio_act + (riesgo * 2.5)
-        tp3 = precio_act + (riesgo * 3.5)
+        riesgo = precio_entrada - sl_final
+        tp1 = precio_entrada + (riesgo * 1.5)
+        tp2 = precio_entrada + (riesgo * 2.5)
+        tp3 = precio_entrada + (riesgo * 3.5)
 
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
@@ -438,15 +442,16 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_short_10x:
-        # SL Dinámico basado en resistencia técnica y volatilidad ATR real
-        sl_final = h1['resistencia'] + (1.0 * atr_act)
-        pct_sl = abs((sl_final - precio_act) / precio_act) * 100
+        sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
+        sl_max_2pct = precio_entrada * 1.02  # Límite estricto del 2%
+        sl_final = min(sl_tecnico, sl_max_2pct)
+        pct_sl = abs((sl_final - precio_entrada) / precio_entrada) * 100
         
-        riesgo = sl_final - precio_act
-        tp1 = precio_act - (riesgo * 1.5)
-        tp2 = precio_act - (riesgo * 2.5)
-        tp3 = precio_act - (riesgo * 3.5)
-
+        riesgo = sl_final - precio_entrada
+        tp1 = precio_entrada - (riesgo * 1.5)
+        tp2 = precio_entrada - (riesgo * 2.5)
+        tp3 = precio_entrada - (riesgo * 3.5)
+        
         beneficio = precio_act - tp1
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
