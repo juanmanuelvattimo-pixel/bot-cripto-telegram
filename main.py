@@ -150,7 +150,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         cruce_stoch_short
     )
 
-   if rsi < 48 and condicion_long:
+    if rsi < 48 and condicion_long:
         # SL dinámico técnico basado en soporte y ATR
         stop_loss_tecnico = soporte - (1.0 * atr)
         # Tope estricto de máximo 2% de distancia en el precio
@@ -221,6 +221,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
                 f"Cruce bajista de Estocástico (K: {stoch_k:.1f} < D: {stoch_d:.1f})"
             ]
         }]
+    return None
 
 # ==========================================
 # 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
@@ -402,19 +403,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.0 * atr_act)
-        sl_max_2pct = precio_entrada * 0.98  # Límite estricto del 2%
+        sl_max_2pct = precio_act * 0.98  # Límite estricto del 2%
         sl_final = max(sl_tecnico, sl_max_2pct)
-        pct_sl = abs((precio_entrada - sl_final) / precio_entrada) * 100
+        pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        riesgo = precio_entrada - sl_final
-        tp1 = precio_entrada + (riesgo * 1.5)
-        tp2 = precio_entrada + (riesgo * 2.5)
-        tp3 = precio_entrada + (riesgo * 3.5)
+        riesgo = precio_act - sl_final
+        tp1 = precio_act + (riesgo * 1.5)
+        tp2 = precio_act + (riesgo * 2.5)
+        tp3 = precio_act + (riesgo * 3.5)
 
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.2:  # Filtro flexible para aceptar 1.2, 1.5, 1.8 o superior
+        if riesgo > 0 and ratio_actual >= 1.2:  
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -443,19 +444,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if gatillo_short_10x:
         sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
-        sl_max_2pct = precio_entrada * 1.02  # Límite estricto del 2%
+        sl_max_2pct = precio_act * 1.02  # Límite estricto del 2%
         sl_final = min(sl_tecnico, sl_max_2pct)
-        pct_sl = abs((sl_final - precio_entrada) / precio_entrada) * 100
+        pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
-        riesgo = sl_final - precio_entrada
-        tp1 = precio_entrada - (riesgo * 1.5)
-        tp2 = precio_entrada - (riesgo * 2.5)
-        tp3 = precio_entrada - (riesgo * 3.5)
+        riesgo = sl_final - precio_act
+        tp1 = precio_act - (riesgo * 1.5)
+        tp2 = precio_act - (riesgo * 2.5)
+        tp3 = precio_act - (riesgo * 3.5)
         
         beneficio = precio_act - tp1
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.2:  # Permite ratios flexibles de 1.2, 1.5, 1.8 o superiores
+        if riesgo > 0 and ratio_actual >= 1.2:  
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
