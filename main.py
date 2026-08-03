@@ -342,7 +342,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (DRY - MODIFICADO)
+# MÓDULO UNIFICADO DE EVALUACIÓN (MODIFICADO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -373,23 +373,26 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    adx_aprobado = h1['adx'] >= 22          
-    rsi_long_valido = h1['rsi'] < 70
-    rsi_short_valido = h1['rsi'] > 30
+    # ==========================================
+    # NUEVOS FILTROS SIMÉTRICOS (PUNTO 1 Y 2)
+    # ==========================================
+    adx_aprobado_long = h1['adx'] >= 15 and h1['rsi'] > 40 and h1['rsi'] < 68
+    adx_aprobado_short = h1['adx'] >= 15 and h1['rsi'] > 32 and h1['rsi'] < 60
 
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
 
-    filtro_estocastico_long = h1['cruce_alcista'] or h1['stoch_k'] < 35
-    filtro_estocastico_short = h1['cruce_bajista'] or h1['stoch_k'] > 65
+    # Cruce estricto del Estocástico combinado con zona permitida
+    filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 40
+    filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 60
 
     filtro_15m_long = m15['precio'] > m15['ema10'] or m15['es_alcista']
     filtro_15m_short = m15['precio'] < m15['ema10'] or m15['es_bajista']
 
-    # --- SNIPER 10X ---
+    # --- SNIPER 10X (LONG) ---
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
-        adx_aprobado and rsi_long_valido and
+        adx_aprobado_long and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
         filtro_estocastico_long and  
@@ -403,13 +406,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
         riesgo = precio_act - sl_final
-        tp1 = precio_act + (riesgo * 1.5)
-        tp2 = precio_act + (riesgo * 2.5)
-        tp3 = precio_act + (riesgo * 3.5)
+        # PUNTO 4: TP1 más cercano (Ratio 1.2 en lugar de 1.5)
+        tp1 = precio_act + (riesgo * 1.2)
+        tp2 = precio_act + (riesgo * 2.2)
+        tp3 = precio_act + (riesgo * 3.2)
 
         beneficio = tp1 - precio_act
         
-        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.1:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -421,15 +425,16 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': [
                     f"Tendencia Diaria (1D) y 4H Alcista aprobada",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 22) y RSI válido ({h1['rsi']:.1f})",
+                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
-                    f"Filtro estocástico y temporalidad 15M a favor"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor"
                 ]
             })
 
+    # --- SNIPER 10X (SHORT) ---
     gatillo_short_10x = (
         d1['es_bajista'] and h4['es_bajista'] and
-        adx_aprobado and rsi_short_valido and
+        adx_aprobado_short and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
         filtro_estocastico_short and 
@@ -443,13 +448,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
         riesgo = sl_final - precio_act
-        tp1 = precio_act - (riesgo * 1.5)
-        tp2 = precio_act - (riesgo * 2.5)
-        tp3 = precio_act - (riesgo * 3.5)
+        # PUNTO 4: TP1 más cercano (Ratio 1.2 en lugar de 1.5)
+        tp1 = precio_act - (riesgo * 1.2)
+        tp2 = precio_act - (riesgo * 2.2)
+        tp3 = precio_act - (riesgo * 3.2)
 
         beneficio = precio_act - tp1
 
-        if riesgo > 0 and (beneficio / riesgo) >= 1.2:
+        if riesgo > 0 and (beneficio / riesgo) >= 1.1:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -461,12 +467,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': [
                     f"Tendencia Diaria (1D) y 4H Bajista aprobada",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 22) y RSI válido ({h1['rsi']:.1f})",
+                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
-                    f"Filtro estocástico y temporalidad 15M a favor"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor"
                 ]
             })
 
+    # El bloque de SPOT se mantiene igual por debajo...
     h4_rsi_valido_spot = h4['rsi'] < 75
     h4_adx_valido_spot = h4['adx'] >= 15
     h1_rsi_valido_spot = h1['rsi'] < 75
@@ -879,3 +886,4 @@ if __name__ == "__main__":
         except Exception:
             pass
         analizar_mercado()
+
