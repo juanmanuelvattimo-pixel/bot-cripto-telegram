@@ -115,13 +115,14 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# MÓDULO: REBOTE DE RANGO (CON R:R MÍNIMO 1.5 + FILTRO DE BANDA INTERNA)
+# MÓDULO: REBOTE DE RANGO OPTIMIZADO (PRECISIÓN Y SENSIBILIDAD)
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    if h1['adx'] > 15:
+    # ADX ampliado a 22 para permitir mercados de rango menos rígidos
+    if h1['adx'] > 22:
         return None
         
     precio_entrada = h1['precio']
@@ -135,22 +136,24 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     stoch_k = h1.get('stoch_k', 50)
     stoch_d = h1.get('stoch_d', 50)
     
-    cruce_stoch_long = (stoch_k < 25) and (stoch_k > stoch_d)
-    cruce_stoch_short = (stoch_k > 75) and (stoch_k < stoch_d)
+    # Estocástico flexible (K y D actuales o con margen amplio)
+    cruce_stoch_long = (stoch_k < 35) and (stoch_k > stoch_d)
+    cruce_stoch_short = (stoch_k > 65) and (stoch_k < stoch_d)
 
+    # Margen de ATR ampliado a 0.8 para evitar bloqueos por micras
     condicion_long = (
         (precio_entrada >= bb_lower) and  
-        (precio_entrada <= (soporte + (atr * 0.4))) and 
+        (precio_entrada <= (soporte + (atr * 0.8))) and 
         cruce_stoch_long
     )
     
     condicion_short = (
         (precio_entrada <= bb_upper) and  
-        (precio_entrada >= (resistencia - (atr * 0.4))) and 
+        (precio_entrada >= (resistencia - (atr * 0.8))) and 
         cruce_stoch_short
     )
 
-    if rsi < 42 and condicion_long:
+    if rsi < 48 and condicion_long:
         stop_loss = soporte - (1.5 * atr) if soporte < precio_entrada else precio_entrada * 0.985
         tp1 = precio_entrada + (atr * 2.5)
         tp2 = precio_entrada + (atr * 3.5)
@@ -175,14 +178,14 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp3': tp3, 'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100*10,
             'rr': f"1:{ratio_rr:.1f}",
             'motivos': [
-                f"ADX bajo ({h1['adx']:.1f} < 15) -> Zona de Rango lateral",
-                f"Precio cerca de soporte / banda inferior (Precio: {fmt_precio(precio_entrada)})",
-                f"RSI en zona baja ({rsi:.1f} < 42)",
+                f"ADX óptimo para rango ({h1['adx']:.1f} < 22)",
+                f"Precio en zona de soporte / banda inferior (Precio: {fmt_precio(precio_entrada)})",
+                f"RSI adecuado en zona baja ({rsi:.1f} < 48)",
                 f"Cruce alcista de Estocástico (K: {stoch_k:.1f} > D: {stoch_d:.1f})"
             ]
         }]
         
-    if rsi > 58 and condicion_short:
+    if rsi > 52 and condicion_short:
         stop_loss = resistencia + (1.5 * atr) if resistencia > precio_entrada else precio_entrada * 1.015
         tp1 = precio_entrada - (atr * 2.5)
         tp2 = precio_entrada - (atr * 3.5)
@@ -207,9 +210,9 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'tp3': tp3, 'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'rr': f"1:{ratio_rr:.1f}",
             'motivos': [
-                f"ADX bajo ({h1['adx']:.1f} < 15) -> Zona de Rango lateral",
-                f"Precio cerca de resistencia / banda superior",
-                f"RSI en zona alta ({rsi:.1f} > 58)",
+                f"ADX óptimo para rango ({h1['adx']:.1f} < 22)",
+                f"Precio en zona de resistencia / banda superior",
+                f"RSI adecuado en zona alta ({rsi:.1f} > 52)",
                 f"Cruce bajista de Estocástico (K: {stoch_k:.1f} < D: {stoch_d:.1f})"
             ]
         }]
@@ -348,16 +351,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
         return None, None, None
 
-    # ==========================================
-    # CASCADA ESTRICTA DE TEMPORALIDADES
-    # ==========================================
     d1 = analisis_tf['1d']
     h4 = analisis_tf['4h']
     h1 = analisis_tf['1h']
     m15 = analisis_tf['15m']
-
-    # Filtro Maestro 1D y 4H: Si no hay alineación macro global, se frena el análisis aquí de inmediato.
-    # (Para rangos se permite evaluar localmente con h1, pero los snipers exigen la cascada completa).
     
     precio_act = h1['precio']
     atr_act = h1['atr']
@@ -366,7 +363,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     spot_res = []
     rango_res = []
 
-    # Rebote de rango (utiliza h1 y h4 como contexto base)
     senales_rango = detectar_rebote_rango_avanzado(h1, h4)
     if senales_rango:
         for sr in senales_rango:
@@ -380,30 +376,25 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    # ==========================================
-    # NUEVOS FILTROS SIMÉTRICOS (PUNTO 1 Y 2)
-    # ==========================================
     adx_aprobado_long = h1['adx'] >= 15 and h1['rsi'] > 40 and h1['rsi'] < 68
     adx_aprobado_short = h1['adx'] >= 15 and h1['rsi'] > 32 and h1['rsi'] < 60
 
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
 
-    # Cruce estricto del Estocástico combinado con zona permitida
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 40
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 60
 
     filtro_15m_long = m15['precio'] > m15['ema10'] or m15['es_alcista']
     filtro_15m_short = m15['precio'] < m15['ema10'] or m15['es_bajista']
 
-    # --- SNIPER 10X (LONG) [CASCADA: 1D -> 4H -> 1H -> 15m] ---
     gatillo_long_10x = (
-        d1['es_alcista'] and h4['es_alcista'] and  # <-- Filtro Macro en Cascada (1D y 4H)
+        d1['es_alcista'] and h4['es_alcista'] and  
         adx_aprobado_long and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
         filtro_estocastico_long and  
-        filtro_15m_long             # <-- Gatillo final en 15m
+        filtro_15m_long             
     )
 
     if gatillo_long_10x:
@@ -437,14 +428,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 ]
             })
 
-    # --- SNIPER 10X (SHORT) [CASCADA: 1D -> 4H -> 1H -> 15m] ---
     gatillo_short_10x = (
-        d1['es_bajista'] and h4['es_bajista'] and  # <-- Filtro Macro en Cascada (1D y 4H)
+        d1['es_bajista'] and h4['es_bajista'] and  
         adx_aprobado_short and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
         filtro_estocastico_short and 
-        filtro_15m_short            # <-- Gatillo final en 15m
+        filtro_15m_short            
     )
 
     if gatillo_short_10x:
@@ -478,7 +468,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 ]
             })
 
-    # El bloque de SPOT se mantiene alineado con la estructura general
     h4_rsi_valido_spot = h4['rsi'] < 75
     h4_adx_valido_spot = h4['adx'] >= 15
     h1_rsi_valido_spot = h1['rsi'] < 75
