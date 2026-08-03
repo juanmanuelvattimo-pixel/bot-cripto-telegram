@@ -203,7 +203,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'sl': stop_loss,
             'pct_sl': abs((stop_loss - precio_entrada)/precio_entrada)*100*10,
             'tp1': tp1, 'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
-            'tp2': tp2, 'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
+            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3, 'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'rr': f"1:{ratio_rr:.1f}",
             'motivos': [
@@ -342,16 +342,22 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (MODIFICADO)
+# MÓDULO UNIFICADO DE EVALUACIÓN (EN CASCADA ESTRICTA)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
         return None, None, None
 
-    h1 = analisis_tf['1h']
-    h4 = analisis_tf['4h']
+    # ==========================================
+    # CASCADA ESTRICTA DE TEMPORALIDADES
+    # ==========================================
     d1 = analisis_tf['1d']
+    h4 = analisis_tf['4h']
+    h1 = analisis_tf['1h']
     m15 = analisis_tf['15m']
+
+    # Filtro Maestro 1D y 4H: Si no hay alineación macro global, se frena el análisis aquí de inmediato.
+    # (Para rangos se permite evaluar localmente con h1, pero los snipers exigen la cascada completa).
     
     precio_act = h1['precio']
     atr_act = h1['atr']
@@ -360,6 +366,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     spot_res = []
     rango_res = []
 
+    # Rebote de rango (utiliza h1 y h4 como contexto base)
     senales_rango = detectar_rebote_rango_avanzado(h1, h4)
     if senales_rango:
         for sr in senales_rango:
@@ -389,14 +396,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_15m_long = m15['precio'] > m15['ema10'] or m15['es_alcista']
     filtro_15m_short = m15['precio'] < m15['ema10'] or m15['es_bajista']
 
-    # --- SNIPER 10X (LONG) ---
+    # --- SNIPER 10X (LONG) [CASCADA: 1D -> 4H -> 1H -> 15m] ---
     gatillo_long_10x = (
-        d1['es_alcista'] and h4['es_alcista'] and
+        d1['es_alcista'] and h4['es_alcista'] and  # <-- Filtro Macro en Cascada (1D y 4H)
         adx_aprobado_long and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
         filtro_estocastico_long and  
-        filtro_15m_long             
+        filtro_15m_long             # <-- Gatillo final en 15m
     )
 
     if gatillo_long_10x:
@@ -406,7 +413,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100 * 10
         
         riesgo = precio_act - sl_final
-        # PUNTO 4: TP1 más cercano (Ratio 1.2 en lugar de 1.5)
         tp1 = precio_act + (riesgo * 1.2)
         tp2 = precio_act + (riesgo * 2.2)
         tp3 = precio_act + (riesgo * 3.2)
@@ -423,22 +429,22 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}",
                 'motivos': [
-                    f"Tendencia Diaria (1D) y 4H Alcista aprobada",
+                    f"Cascada validada: Tendencia Diaria (1D) y 4H Alcista aprobada",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
-                    f"Cruce estricto de Estocástico y temporalidad 15M a favor"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
 
-    # --- SNIPER 10X (SHORT) ---
+    # --- SNIPER 10X (SHORT) [CASCADA: 1D -> 4H -> 1H -> 15m] ---
     gatillo_short_10x = (
-        d1['es_bajista'] and h4['es_bajista'] and
+        d1['es_bajista'] and h4['es_bajista'] and  # <-- Filtro Macro en Cascada (1D y 4H)
         adx_aprobado_short and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
         filtro_estocastico_short and 
-        filtro_15m_short            
+        filtro_15m_short            # <-- Gatillo final en 15m
     )
 
     if gatillo_short_10x:
@@ -448,7 +454,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100 * 10
         
         riesgo = sl_final - precio_act
-        # PUNTO 4: TP1 más cercano (Ratio 1.2 en lugar de 1.5)
         tp1 = precio_act - (riesgo * 1.2)
         tp2 = precio_act - (riesgo * 2.2)
         tp3 = precio_act - (riesgo * 3.2)
@@ -465,15 +470,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}",
                 'motivos': [
-                    f"Tendencia Diaria (1D) y 4H Bajista aprobada",
+                    f"Cascada validada: Tendencia Diaria (1D) y 4H Bajista aprobada",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
-                    f"Cruce estricto de Estocástico y temporalidad 15M a favor"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
 
-    # El bloque de SPOT se mantiene igual por debajo...
+    # El bloque de SPOT se mantiene alineado con la estructura general
     h4_rsi_valido_spot = h4['rsi'] < 75
     h4_adx_valido_spot = h4['adx'] >= 15
     h1_rsi_valido_spot = h1['rsi'] < 75
@@ -886,4 +891,3 @@ if __name__ == "__main__":
         except Exception:
             pass
         analizar_mercado()
-
