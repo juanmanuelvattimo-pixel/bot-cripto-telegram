@@ -203,7 +203,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
             'sl': stop_loss,
             'pct_sl': abs((stop_loss - precio_entrada)/precio_entrada)*100*10,
             'tp1': tp1, 'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100*10,
-            'tp2': tp2, 'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100*10,
+            'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'tp3': tp3, 'pct_tp3': abs((tp2 - precio_entrada)/precio_entrada)*100*10,
             'rr': f"1:{ratio_rr:.1f}",
             'motivos': [
@@ -373,7 +373,11 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    adx_aprobado = h1['adx'] >= 22          
+    # --- FILTROS MODIFICADOS PARA SNIPER 10X (ADX >= 26 Y MFI RESTAURADO) ---
+    adx_aprobado = h1['adx'] >= 26          
+    mfi_long_valido = h1['mfi'] > 50
+    mfi_short_valido = h1['mfi'] <= 50
+    
     rsi_long_valido = h1['rsi'] < 70
     rsi_short_valido = h1['rsi'] > 30
 
@@ -389,7 +393,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     # --- SNIPER 10X ---
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and
-        adx_aprobado and rsi_long_valido and
+        adx_aprobado and mfi_long_valido and rsi_long_valido and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
         filtro_estocastico_long and  
@@ -421,7 +425,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': [
                     f"Tendencia Diaria (1D) y 4H Alcista aprobada",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 22) y RSI válido ({h1['rsi']:.1f})",
+                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 26), MFI válido ({h1['mfi']:.1f} > 50) y RSI ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
                     f"Filtro estocástico y temporalidad 15M a favor"
                 ]
@@ -429,7 +433,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     gatillo_short_10x = (
         d1['es_bajista'] and h4['es_bajista'] and
-        adx_aprobado and rsi_short_valido and
+        adx_aprobado and mfi_short_valido and rsi_short_valido and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
         filtro_estocastico_short and 
@@ -454,14 +458,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100*10,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100*10,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100*10,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100*10,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{(beneficio/riesgo):.1f}",
                 'motivos': [
                     f"Tendencia Diaria (1D) y 4H Bajista aprobada",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 22) y RSI válido ({h1['rsi']:.1f})",
+                    f"ADX 1H Fuerte ({h1['adx']:.1f} >= 26), MFI válido ({h1['mfi']:.1f} <= 50) y RSI ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
                     f"Filtro estocástico y temporalidad 15M a favor"
                 ]
