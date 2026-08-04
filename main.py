@@ -115,7 +115,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# MÓDULO: REBOTE DE RANGO OPTIMIZADO (PRECISIÓN Y SENSIBILIDAD)
+# MÓDULO: REBOTE DE RANGO OPTIMIZADO
 # ==========================================
 def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
@@ -151,9 +151,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     )
 
     if rsi < 48 and condicion_long:
-        # SL dinámico técnico basado en soporte y ATR
         stop_loss_tecnico = soporte - (1.0 * atr)
-        # Tope estricto de máximo 2% de distancia en el precio
         stop_loss_maximo = precio_entrada * 0.98  
         stop_loss = max(stop_loss_tecnico, stop_loss_maximo)
         
@@ -189,7 +187,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         
     if rsi > 52 and condicion_short:
         stop_loss_tecnico = resistencia + (1.0 * atr)
-        stop_loss_maximo = precio_entrada * 1.02  # Tope estricto de máximo 2% arriba
+        stop_loss_maximo = precio_entrada * 1.02  
         stop_loss = min(stop_loss_tecnico, stop_loss_maximo)
         
         tp1 = precio_entrada - (atr * 2.0)
@@ -224,6 +222,122 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     return None
 
 # ==========================================
+# MÓDULO: SNIPER RUPTURAS 1H (EMA 55) - LONG & SHORT (4 FILTROS PROFESIONALES)
+# ==========================================
+def detectar_sniper_rupturas(h1, h4=None, d1=None):
+    if not h1:
+        return None
+
+    precio_actual = h1['precio']
+    ema55_1h = h1.get('ema55', 0)
+    rsi = h1['rsi']
+    atr = h1['atr']
+    soporte = h1['soporte']
+    resistencia = h1['resistencia']
+
+    # Filtro 1: Volumen (Volume Spike - Superior al 20% de su media)
+    volumen_actual = h1.get('volume', 0)
+    volumen_promedio = h1.get('volumen_ma', volumen_actual)
+    volumen_valido = volumen_actual >= (volumen_promedio * 1.2) if volumen_promedio > 0 else True
+
+    adx_valido = h1['adx'] >= 18
+    resultados_ruptura = []
+
+    # ==========================================
+    # 🟢 RUPTURA AL ALZA (LONG)
+    # ==========================================
+    cruce_ruptura_long = (precio_actual > ema55_1h) and h1.get('cierra_arriba_ema10', False)
+    # Filtro 2: Espacio libre hasta la resistencia
+    espacio_suficiente_long = (resistencia - precio_actual) >= (atr * 1.5) if resistencia > precio_actual else True
+    
+    # Filtro 3: Tendencia macro favorable (4H no bajista extrema)
+    tendencia_macro_long_ok = True
+    if h4:
+        if h4['supertrend_estado'] == "🔴 BAJISTA" and not h4['es_alcista']:
+            tendencia_macro_long_ok = False
+
+    # Filtro 4: RSI con impulso sano
+    rsi_valido_long = 52 <= rsi <= 72
+
+    if cruce_ruptura_long and volumen_valido and espacio_suficiente_long and tendencia_macro_long_ok and rsi_valido_long and adx_valido:
+        stop_loss_tecnico = ema55_1h - (1.0 * atr)
+        stop_loss_maximo = precio_actual * 0.975
+        stop_loss = max(stop_loss_tecnico, stop_loss_maximo)
+        
+        riesgo = precio_actual - stop_loss
+        if riesgo > 0:
+            tp1 = precio_actual + (riesgo * 1.5)
+            tp2 = precio_actual + (riesgo * 2.5)
+            tp3 = precio_actual + (riesgo * 3.5)
+            ratio_rr = (tp1 - precio_actual) / riesgo
+            
+            if ratio_rr >= 1.2:
+                resultados_ruptura.append({
+                    'tipo': 'RUPTURA EMA55 🟢',
+                    'sl': stop_loss,
+                    'pct_sl': abs((precio_actual - stop_loss)/precio_actual)*100,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_actual)/precio_actual)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_actual)/precio_actual)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_actual)/precio_actual)*100,
+                    'rr': f"1:{ratio_rr:.2f}",
+                    'motivos': [
+                        f"Ruptura alcista con fuerza de la EMA 55 en 1H (Precio: {fmt_precio(precio_actual)} > EMA55: {fmt_precio(ema55_1h)})",
+                        f"Volumen de ruptura confirmado y superior a la media",
+                        f"Espacio libre de recorrido validado hasta la resistencia cercana",
+                        f"Contexto macro de 4H/1D favorable para long",
+                        f"RSI en zona óptima de aceleración ({rsi:.1f}) y ADX con fuerza ({h1['adx']:.1f})"
+                    ]
+                })
+
+    # ==========================================
+    # 🔴 RUPTURA A LA BAJA (SHORT)
+    # ==========================================
+    cruce_ruptura_short = (precio_actual < ema55_1h) and h1.get('cierra_abajo_ema10', False)
+    # Filtro 2: Espacio libre hasta el soporte
+    espacio_suficiente_short = (precio_actual - soporte) >= (atr * 1.5) if precio_actual > soporte else True
+    
+    # Filtro 3: Tendencia macro favorable (4H no alcista desbocada)
+    tendencia_macro_short_ok = True
+    if h4:
+        if h4['supertrend_estado'] == "🟢 ALCISTA" and not h4['es_bajista']:
+            tendencia_macro_short_ok = False
+
+    # Filtro 4: RSI bajista sano
+    rsi_valido_short = 28 <= rsi <= 48
+
+    if cruce_ruptura_short and volumen_valido and espacio_suficiente_short and tendencia_macro_short_ok and rsi_valido_short and adx_valido:
+        stop_loss_tecnico = ema55_1h + (1.0 * atr)
+        stop_loss_maximo = precio_actual * 1.025
+        stop_loss = min(stop_loss_tecnico, stop_loss_maximo)
+        
+        riesgo = stop_loss - precio_actual
+        if riesgo > 0:
+            tp1 = precio_actual - (riesgo * 1.5)
+            tp2 = precio_actual - (riesgo * 2.5)
+            tp3 = precio_actual - (riesgo * 3.5)
+            ratio_rr = (precio_actual - tp1) / riesgo
+            
+            if ratio_rr >= 1.2:
+                resultados_ruptura.append({
+                    'tipo': 'RUPTURA EMA55 🔴',
+                    'sl': stop_loss,
+                    'pct_sl': abs((stop_loss - precio_actual)/precio_actual)*100,
+                    'tp1': tp1, 'pct_tp1': abs((precio_actual - tp1)/precio_actual)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_actual)/precio_actual)*100,
+                    'tp3': tp3, 'pct_tp3': abs((precio_actual - tp3)/precio_actual)*100,
+                    'rr': f"1:{ratio_rr:.2f}",
+                    'motivos': [
+                        f"Ruptura bajista con fuerza de la EMA 55 en 1H (Precio: {fmt_precio(precio_actual)} < EMA55: {fmt_precio(ema55_1h)})",
+                        f"Volumen de ruptura bajista confirmado y superior a la media",
+                        f"Espacio libre de caída validado hasta el soporte cercano",
+                        f"Contexto macro de 4H/1D favorable para short",
+                        f"RSI en zona óptima bajista ({rsi:.1f}) y ADX con fuerza ({h1['adx']:.1f})"
+                    ]
+                })
+
+    return resultados_ruptura if resultados_ruptura else None
+
+# ==========================================
 # 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
@@ -245,6 +359,9 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
+        # Promedio móvil de volumen (MA 20) para validar rupturas
+        df['volumen_ma'] = df['volume'].rolling(window=20).mean()
+
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
         df['bb_lower'] = indicator_bb.bollinger_lband()
@@ -338,6 +455,9 @@ def analizar_par_completo(symbol, timeframe):
             'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
             'ema10': df['ema10'].iloc[-1],
             'ema20': df['ema20'].iloc[-1],
+            'ema55': e55,
+            'volume': df['volume'].iloc[-1],
+            'volumen_ma': df['volumen_ma'].iloc[-1],
             'soporte': soporte_key,
             'resistencia': resistencia_key,
             'bb_upper': df['bb_upper'].iloc[-1],
@@ -349,11 +469,11 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (EN CASCADA ESTRICTA)
+# MÓDULO UNIFICADO DE EVALUACIÓN (EN CASCADA)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
-        return None, None, None
+        return None, None, None, None
 
     d1 = analisis_tf['1d']
     h4 = analisis_tf['4h']
@@ -366,7 +486,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sniper_res = []
     spot_res = []
     rango_res = []
+    ruptura_res = []
 
+    # 1. Evaluar Rebotes de Rango
     senales_rango = detectar_rebote_rango_avanzado(h1, h4)
     if senales_rango:
         for sr in senales_rango:
@@ -380,6 +502,21 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
+    # 2. Evaluar Rupturas 1H (EMA 55) - Long & Short
+    senales_ruptura = detectar_sniper_rupturas(h1, h4, d1)
+    if senales_ruptura:
+        for sr in senales_ruptura:
+            ruptura_res.append({
+                'symbol': simbolo_limpio, 'tipo': sr['tipo'],
+                'precio': precio_act, 'sl': sr['sl'], 'pct_sl': sr['pct_sl'],
+                'tp1': sr['tp1'], 'pct_tp1': sr['pct_tp1'],
+                'tp2': sr['tp2'], 'pct_tp2': sr['pct_tp2'],
+                'tp3': sr['tp3'], 'pct_tp3': sr['pct_tp3'],
+                'rr': sr['rr'],
+                'motivos': sr.get('motivos', [])
+            })
+
+    # 3. Evaluar Estrategia Sniper 10X (Pullbacks Tendenciales)
     adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 40 and h1['rsi'] < 68
     adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 32 and h1['rsi'] < 60
 
@@ -403,7 +540,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.0 * atr_act)
-        sl_max_2pct = precio_act * 0.98  # Límite estricto del 2%
+        sl_max_2pct = precio_act * 0.98  
         sl_final = max(sl_tecnico, sl_max_2pct)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
@@ -444,7 +581,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if gatillo_short_10x:
         sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
-        sl_max_2pct = precio_act * 1.02  # Límite estricto del 2%
+        sl_max_2pct = precio_act * 1.02  
         sl_final = min(sl_tecnico, sl_max_2pct)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
@@ -474,6 +611,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 ]
             })
 
+    # 4. Evaluar Estrategia Spot
     h4_rsi_valido_spot = h4['rsi'] < 75
     h4_adx_valido_spot = h4['adx'] >= 15
     h1_rsi_valido_spot = h1['rsi'] < 75
@@ -521,7 +659,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 ]
             })
 
-    return sniper_res, spot_res, rango_res
+    return sniper_res, spot_res, rango_res, ruptura_res
 
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
@@ -582,9 +720,24 @@ def evaluar_trade_manual(ticker_raw):
             return
         analisis_tf[tf] = res
 
-    sniper, spot, rango = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
+    sniper, spot, rango, ruptura = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
     
     msj = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN MANUAL DE TRADE: ${simbolo_limpio}*\n\n"
+
+    if ruptura:
+        for r in ruptura:
+            msj += f"⚡ *{r['tipo']}* _(R:R {r['rr']})_\n"
+            msj += f"💵 *Entrada:* `{fmt_precio(r['precio'])}`\n"
+            msj += f"🛑 *Stop Loss:* `{fmt_precio(r['sl'])}` _(-{r['pct_sl']:.2f}%)_\n"
+            msj += f"🎯 *TP1:* `{fmt_precio(r['tp1'])}` _(+{r['pct_tp1']:.2f}%)_\n"
+            msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{r['pct_tp2']:.2f}%)_\n"
+            msj += f"🎯 *TP3:* `{fmt_precio(r['tp3'])}` _(+{r['pct_tp3']:.2f}%)_\n"
+            msj += f"📋 *Condiciones Cumplidas:*\n"
+            for m in r.get('motivos', []):
+                msj += f"  • {m}\n"
+            msj += "\n"
+    else:
+        msj += "⚪ *RUPTURAS EMA55:* Sin rupturas activas.\n\n"
 
     if sniper:
         for op in sniper:
@@ -624,7 +777,7 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"💵 *Entrada:* `{fmt_precio(r['precio'])}`\n"
             msj += f"🛑 *Stop Loss:* `{fmt_precio(r['sl'])}` _(-{r['pct_sl']:.2f}%)_\n"
             msj += f"🎯 *TP1:* `{fmt_precio(r['tp1'])}` _(+{r['pct_tp1']:.2f}%)_\n"
-            msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{r['pct_tp2']:.2f}%)_\n"
+            msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n" if 'op' in locals() and 'pct_tp2' in op else f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{r['pct_tp2']:.2f}%)_\n"
             msj += f"🎯 *TP3:* `{fmt_precio(r['tp3'])}` _(+{r['pct_tp3']:.2f}%)_\n"
             msj += f"📋 *Condiciones Cumplidas:*\n"
             for m in r.get('motivos', []):
@@ -644,11 +797,11 @@ def procesar_par_paralelo(par):
             analisis_tf[tf] = res
     
     simbolo_limpio = par.split('/')[0]
-    sniper, spot, rango = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
-    return sniper, spot, rango
+    sniper, spot, rango, ruptura = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
+    return sniper, spot, rango, ruptura
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper y Rangos...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de Rupturas, Rangos y Entradas Sniper...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -658,27 +811,45 @@ def escanear_senales_sniper_manual():
     entradas_sniper = []
     entradas_sniper_spot = []
     entradas_rango = []
+    entradas_ruptura = []
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {executor.submit(procesar_par_paralelo, par): par for par in pares_filtrados}
         for future in as_completed(futures):
             try:
-                sniper, spot, rango = future.result()
+                sniper, spot, rango, ruptura = future.result()
                 if sniper:
                     entradas_sniper.extend(sniper)
                 if spot:
                     entradas_sniper_spot.extend(spot)
                 if rango:
                     entradas_rango.extend(rango)
+                if ruptura:
+                    entradas_ruptura.extend(ruptura)
             except Exception as e:
                 logging.error(f"Error procesando hilo de par: {e}")
 
-    enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango)
+    enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango, entradas_ruptura)
 
-def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango):
-    if not entradas_sniper and not entradas_sniper_spot and not entradas_rango:
+def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango, entradas_ruptura):
+    if not entradas_sniper and not entradas_sniper_spot and not entradas_rango and not entradas_ruptura:
         enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones.")
         return
+
+    if entradas_ruptura:
+        msj_ruptura = "🤖 **BOT ACTIVO ✅**\n\n🚨 *RUPTURAS DE EMA 55 (1H) DETECTADAS:* 🚨\n\n"
+        for op in entradas_ruptura[:5]:
+            msj_ruptura += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+            msj_ruptura += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
+            msj_ruptura += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
+            msj_ruptura += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
+            msj_ruptura += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
+            msj_ruptura += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
+            msj_ruptura += f"📋 *Condiciones Cumplidas:*\n"
+            for m in op.get('motivos', []):
+                msj_ruptura += f"  • {m}\n"
+            msj_ruptura += "\n"
+        enviar_telegram(msj_ruptura)
 
     if entradas_rango:
         msj_rango = "🤖 **BOT ACTIVO ✅**\n\n⚡ *REBOTES EN RANGO DETECTADOS:* ⚡\n\n"
@@ -765,7 +936,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia Sniper y Rangos para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategias y rupturas para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
@@ -804,22 +975,25 @@ def analizar_mercado():
         entradas_sniper = []
         entradas_sniper_spot = []
         entradas_rango = []
+        entradas_ruptura = []
         
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = {executor.submit(procesar_par_paralelo, par): par for par in pares_filtrados}
             for future in as_completed(futures):
                 try:
-                    sniper, spot, rango = future.result()
+                    sniper, spot, rango, ruptura = future.result()
                     if sniper:
                         entradas_sniper.extend(sniper)
                     if spot:
                         entradas_sniper_spot.extend(spot)
                     if rango:
                         entradas_rango.extend(rango)
+                    if ruptura:
+                        entradas_ruptura.extend(ruptura)
                 except Exception as e:
                     logging.error(f"Error en tarea paralela automática: {e}")
 
-        enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango)
+        enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango, entradas_ruptura)
         logging.info("✅ Escaneo automático completado.")
 
     except Exception as e:
