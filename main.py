@@ -222,7 +222,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     return None
 
 # ==========================================
-# MÓDULO: SNIPER RUPTURAS 1H (EMA 55) - LONG & SHORT (4 FILTROS PROFESIONALES)
+# MÓDULO: SNIPER RUPTURAS 1H (EMA 55) - LONG & SHORT (CON DETECCIÓN DE QUIEBRE EXACTO)
 # ==========================================
 def detectar_sniper_rupturas(h1, h4=None, d1=None):
     if not h1:
@@ -230,6 +230,9 @@ def detectar_sniper_rupturas(h1, h4=None, d1=None):
 
     precio_actual = h1['precio']
     ema55_1h = h1.get('ema55', 0)
+    ema55_anterior = h1.get('ema55_anterior', ema55_1h)
+    precio_anterior = h1.get('precio_anterior', precio_actual)
+    
     rsi = h1['rsi']
     atr = h1['atr']
     soporte = h1['soporte']
@@ -244,22 +247,19 @@ def detectar_sniper_rupturas(h1, h4=None, d1=None):
     resultados_ruptura = []
 
     # ==========================================
-    # 🟢 RUPTURA AL ALZA (LONG)
+    # 🟢 RUPTURA AL ALZA (LONG) - VELA DE QUIEBRE EXACTA
     # ==========================================
-    cruce_ruptura_long = (precio_actual > ema55_1h) and h1.get('cierra_arriba_ema10', False)
-    # Filtro 2: Espacio libre hasta la resistencia
+    quiebre_exacto_long = (precio_anterior <= ema55_anterior) and (precio_actual > ema55_1h)
     espacio_suficiente_long = (resistencia - precio_actual) >= (atr * 1.5) if resistencia > precio_actual else True
     
-    # Filtro 3: Tendencia macro favorable (4H no bajista extrema)
     tendencia_macro_long_ok = True
     if h4:
         if h4['supertrend_estado'] == "🔴 BAJISTA" and not h4['es_alcista']:
             tendencia_macro_long_ok = False
 
-    # Filtro 4: RSI con impulso sano
     rsi_valido_long = 52 <= rsi <= 72
 
-    if cruce_ruptura_long and volumen_valido and espacio_suficiente_long and tendencia_macro_long_ok and rsi_valido_long and adx_valido:
+    if quiebre_exacto_long and volumen_valido and espacio_suficiente_long and tendencia_macro_long_ok and rsi_valido_long and adx_valido:
         stop_loss_tecnico = ema55_1h - (1.0 * atr)
         stop_loss_maximo = precio_actual * 0.975
         stop_loss = max(stop_loss_tecnico, stop_loss_maximo)
@@ -281,7 +281,7 @@ def detectar_sniper_rupturas(h1, h4=None, d1=None):
                     'tp3': tp3, 'pct_tp3': abs((tp3 - precio_actual)/precio_actual)*100,
                     'rr': f"1:{ratio_rr:.2f}",
                     'motivos': [
-                        f"Ruptura alcista con fuerza de la EMA 55 en 1H (Precio: {fmt_precio(precio_actual)} > EMA55: {fmt_precio(ema55_1h)})",
+                        f"¡Vela de quiebre alcista exacta de la EMA 55 en 1H!",
                         f"Volumen de ruptura confirmado y superior a la media",
                         f"Espacio libre de recorrido validado hasta la resistencia cercana",
                         f"Contexto macro de 4H/1D favorable para long",
@@ -290,22 +290,19 @@ def detectar_sniper_rupturas(h1, h4=None, d1=None):
                 })
 
     # ==========================================
-    # 🔴 RUPTURA A LA BAJA (SHORT)
+    # 🔴 RUPTURA A LA BAJA (SHORT) - VELA DE QUIEBRE EXACTA
     # ==========================================
-    cruce_ruptura_short = (precio_actual < ema55_1h) and h1.get('cierra_abajo_ema10', False)
-    # Filtro 2: Espacio libre hasta el soporte
+    quiebre_exacto_short = (precio_anterior >= ema55_anterior) and (precio_actual < ema55_1h)
     espacio_suficiente_short = (precio_actual - soporte) >= (atr * 1.5) if precio_actual > soporte else True
     
-    # Filtro 3: Tendencia macro favorable (4H no alcista desbocada)
     tendencia_macro_short_ok = True
     if h4:
         if h4['supertrend_estado'] == "🟢 ALCISTA" and not h4['es_bajista']:
             tendencia_macro_short_ok = False
 
-    # Filtro 4: RSI bajista sano
     rsi_valido_short = 28 <= rsi <= 48
 
-    if cruce_ruptura_short and volumen_valido and espacio_suficiente_short and tendencia_macro_short_ok and rsi_valido_short and adx_valido:
+    if quiebre_exacto_short and volumen_valido and espacio_suficiente_short and tendencia_macro_short_ok and rsi_valido_short and adx_valido:
         stop_loss_tecnico = ema55_1h + (1.0 * atr)
         stop_loss_maximo = precio_actual * 1.025
         stop_loss = min(stop_loss_tecnico, stop_loss_maximo)
@@ -324,10 +321,10 @@ def detectar_sniper_rupturas(h1, h4=None, d1=None):
                     'pct_sl': abs((stop_loss - precio_actual)/precio_actual)*100,
                     'tp1': tp1, 'pct_tp1': abs((precio_actual - tp1)/precio_actual)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_actual)/precio_actual)*100,
-                    'tp3': tp3, 'pct_tp3': abs((precio_actual - tp3)/precio_actual)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_actual)/precio_actual)*100,
                     'rr': f"1:{ratio_rr:.2f}",
                     'motivos': [
-                        f"Ruptura bajista con fuerza de la EMA 55 en 1H (Precio: {fmt_precio(precio_actual)} < EMA55: {fmt_precio(ema55_1h)})",
+                        f"¡Vela de quiebre bajista exacta de la EMA 55 en 1H!",
                         f"Volumen de ruptura bajista confirmado y superior a la media",
                         f"Espacio libre de caída validado hasta el soporte cercano",
                         f"Contexto macro de 4H/1D favorable para short",
@@ -359,7 +356,6 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
-        # Promedio móvil de volumen (MA 20) para validar rupturas
         df['volumen_ma'] = df['volume'].rolling(window=20).mean()
 
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
@@ -456,6 +452,8 @@ def analizar_par_completo(symbol, timeframe):
             'ema10': df['ema10'].iloc[-1],
             'ema20': df['ema20'].iloc[-1],
             'ema55': e55,
+            'precio_anterior': df['close'].iloc[-2],
+            'ema55_anterior': df['ema55'].iloc[-2],
             'volume': df['volume'].iloc[-1],
             'volumen_ma': df['volumen_ma'].iloc[-1],
             'soporte': soporte_key,
@@ -502,7 +500,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    # 2. Evaluar Rupturas 1H (EMA 55) - Long & Short
+    # 2. Evaluar Rupturas 1H (EMA 55) - Long & Short (Vela exacta)
     senales_ruptura = detectar_sniper_rupturas(h1, h4, d1)
     if senales_ruptura:
         for sr in senales_ruptura:
@@ -598,8 +596,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
@@ -737,7 +735,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *RUPTURAS EMA55:* Sin rupturas activas.\n\n"
+        msj += "⚪ *RUPTURAS EMA55:* Sin rupturas en vela actual.\n\n"
 
     if sniper:
         for op in sniper:
@@ -777,7 +775,7 @@ def evaluar_trade_manual(ticker_raw):
             msj += f"💵 *Entrada:* `{fmt_precio(r['precio'])}`\n"
             msj += f"🛑 *Stop Loss:* `{fmt_precio(r['sl'])}` _(-{r['pct_sl']:.2f}%)_\n"
             msj += f"🎯 *TP1:* `{fmt_precio(r['tp1'])}` _(+{r['pct_tp1']:.2f}%)_\n"
-            msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n" if 'op' in locals() and 'pct_tp2' in op else f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{r['pct_tp2']:.2f}%)_\n"
+            msj += f"🎯 *TP2:* `{fmt_precio(r['tp2'])}` _(+{r['pct_tp2']:.2f}%)_\n"
             msj += f"🎯 *TP3:* `{fmt_precio(r['tp3'])}` _(+{r['pct_tp3']:.2f}%)_\n"
             msj += f"📋 *Condiciones Cumplidas:*\n"
             for m in r.get('motivos', []):
