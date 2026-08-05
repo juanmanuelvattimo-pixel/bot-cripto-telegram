@@ -344,9 +344,8 @@ def analizar_par_completo(symbol, timeframe):
         }
     except Exception as e:
         return None
-
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (EN CASCADA ESTRICTA)
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON FILTROS ESTRICTOS DE TENDENCIA)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -377,7 +376,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    # ADX actualizado a 12
+    # ADX optimizado y RSI simétrico seguro
     adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 40 and h1['rsi'] < 68
     adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 32 and h1['rsi'] < 60
 
@@ -387,13 +386,23 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 45
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 55
 
-    # m15_cruce_alcista = m15.get('stoch_k', 0) > m15.get('stoch_d', 0)
-    filtro_15m_long = m15['precio'] > m15['ema20'] # or m15_cruce_alcista
-    # m15_cruce_bajista = m15.get('stoch_k', 0) < m15.get('stoch_d', 0)
-    filtro_15m_short =  m15['precio'] < m15['ema20'] # or m15_cruce_bajista
+    filtro_15m_long = m15['precio'] > m15['ema20']
+    filtro_15m_short = m15['precio'] < m15['ema20']
+
+    # ==========================================
+    # NUEVOS FILTROS ESTRICTOS DE ALINEACIÓN (EVITAN CONTRADICCIONES)
+    # ==========================================
+    # 1H: Las EMAs deben estar ordenadas estrictamente a favor de la dirección
+    emas_1h_alcistas = (h1['ema10'] > h1['ema20']) and (h1['ema20'] > h1['ema55'])
+    emas_1h_bajistas = (h1['ema10'] < h1['ema20']) and (h1['ema20'] < h1['ema55'])
+
+    # 4H: El SuperTrend de 4H debe estar de acuerdo obligatoriamente con la operación
+    h4_alcista = (h4['supertrend_estado'] == "🟢 ALCISTA")
+    h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA")
 
     gatillo_long_10x = (
-        d1['es_alcista'] and h4['es_alcista'] and  
+        d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
+        emas_1h_alcistas and # <--- NUEVA REGLA: EMAs de 1H ordenadas al alza
         adx_aprobado_long and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
@@ -402,7 +411,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_long_10x:
-        # SL 100% dinámico basado en soporte y ATR (Sin tope estricto de 2%)
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
@@ -424,7 +432,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Cascada validada: Tendencia Diaria (1D) y 4H Alcista aprobada",
+                    f"Alineación total: 1D, 4H (SuperTrend Alcista) y EMAs 1H ordenadas",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
@@ -433,7 +441,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             })
 
     gatillo_short_10x = (
-        d1['es_bajista'] and h4['es_bajista'] and  
+        d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
+        emas_1h_bajistas and # <--- NUEVA REGLA: EMAs de 1H ordenadas a la baja
         adx_aprobado_short and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
@@ -442,7 +451,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_short_10x:
-        # SL 100% dinámico basado en resistencia y ATR (Sin tope estricto de 2%)
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
@@ -464,7 +472,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Cascada validada: Tendencia Diaria (1D) y 4H Bajista aprobada",
+                    f"Alineación total: 1D, 4H (SuperTrend Bajista) y EMAs 1H ordenadas",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
@@ -481,8 +489,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     pullback_spot_valido = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
 
     gatillo_spot = (
-        d1['es_alcista'] and
-        h4_adx_valido_spot and h4_rsi_valido_spot and (h4['supertrend_estado'] == "🟢 ALCISTA") and
+        d1['es_alcista'] and emas_1h_alcistas and
+        h4_adx_valido_spot and h4_rsi_valido_spot and h4_alcista and
         h1_adx_valido_spot and h1_rsi_valido_spot and (h1['supertrend_estado'] == "🟢 ALCISTA") and 
         estocastico_valido_spot and
         pullback_spot_valido
@@ -512,7 +520,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_spot:.2f}",
                 'motivos': [
-                    f"Tendencia Diaria (1D) Alcista",
+                    f"Tendencia Diaria Alcista y EMAs 1H alineadas",
                     f"SuperTrend Alcista activo en 4H y 1H",
                     f"ADX e Índice RSI en rangos permitidos para Spot (RSI 1H: {h1['rsi']:.1f})",
                     f"Estocástico K < 50 ({h1['stoch_k']:.1f}) con Pullback adecuado a medias"
@@ -520,6 +528,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             })
 
     return sniper_res, spot_res, rango_res
+
 
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
