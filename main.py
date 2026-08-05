@@ -1,5 +1,5 @@
 # ==========================================
-# RUPTURAS.py - ACTUALIZADO CON ENTRADAS ANTICIPADAS
+# RUPTURAS.py - ACTUALIZADO CON FILTROS ANTICIPACIÓN Y ANTI-TRAMPAS
 # ==========================================
 
 import time
@@ -352,7 +352,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (CON ANTICIPACIÓN SNIPER)
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON ANTICIPACIÓN Y FILTROS ANTI-TRAMPA)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -391,29 +391,34 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     m15_cruce_bajista = m15.get('stoch_k', 0) < m15.get('stoch_d', 0)
     filtro_15m_short = (m15['precio'] < m15['ema20']) or m15_cruce_bajista
 
-   # ==========================================
-    # LÓGICA DE ANTICIPACIÓN SNIPER 10X (CORREGIDA Y ALINEADA)
+    # ==========================================
+    # LÓGICA DE ANTICIPACIÓN SNIPER 10X (CON SUPERTREND ESTRICTO Y ANTI-TRAMPAS)
     # ==========================================
     stoch_k = h1['stoch_k']
     stoch_d = h1['stoch_d']
     diferencia_stoch = abs(stoch_k - stoch_d)
     
-    # Exigir que el SuperTrend de 1H y 4H acompañe estrictamente la dirección
+    # Validar coherencia estricta del SuperTrend en 1H y 4H
     st_1h_alcista = h1['supertrend_estado'].startswith("🟢")
     st_4h_alcista = h4['supertrend_estado'].startswith("🟢")
     st_1h_bajista = h1['supertrend_estado'].startswith("🔴")
     st_4h_bajista = h4['supertrend_estado'].startswith("🔴")
+    
+    # Filtros anti-trampa (evitar cuchillos cayendo y pumps parabólicos)
+    evitar_caida_libre = h1['precio'] > (h1['ema10'] - (2.5 * atr_act))
+    evitar_subida_parabolica = h1['precio'] < (h1['ema10'] + (2.5 * atr_act))
 
-    # 1. LONG ANTICIPADO (Todo debe ser alcista)
+    # 1. LONG ANTICIPADO
     fuerza_giro_long = (stoch_k <= 28) and (diferencia_stoch <= 4.0)
     proximidad_soporte_long = h1['precio'] <= (h1['soporte'] * 1.015) or (h1['precio'] <= h1['bb_lower'] * 1.01)
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and  
-        st_4h_alcista and st_1h_alcista and # <-- NUEVO: SuperTrend coherente
+        st_4h_alcista and st_1h_alcista and 
         adx_aprobado_long and
         proximidad_soporte_long and
         fuerza_giro_long and
+        evitar_caida_libre and # <-- Filtro anti-caída libre
         filtro_15m_long             
     )
 
@@ -444,20 +449,22 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     f"Tendencia Diaria (1D) y 4H Alcista confirmada",
                     f"SuperTrend 1H y 4H en concordancia ALCISTA",
                     f"Precio rozando soporte clave o Banda Inferior (Anticipación)",
-                    f"Estocástico en zona de suelo extremo (K: {stoch_k:.1f}) a punto de girar"
+                    f"Estocástico en zona de suelo extremo (K: {stoch_k:.1f}) a punto de girar",
+                    f"Estructura saludable (Sin caída libre vertical)"
                 ]
             })
 
-    # 2. SHORT ANTICIPADO (Todo debe ser bajista)
+    # 2. SHORT ANTICIPADO
     fuerza_giro_short = (stoch_k >= 72) and (diferencia_stoch <= 4.0)
     proximidad_resistencia_short = h1['precio'] >= (h1['resistencia'] * 0.985) or (h1['precio'] >= h1['bb_upper'] * 0.99)
 
     gatillo_short_10x = (
         d1['es_bajista'] and h4['es_bajista'] and  
-        st_4h_bajista and st_1h_bajista and # <-- NUEVO: SuperTrend coherente
+        st_4h_bajista and st_1h_bajista and 
         adx_aprobado_short and
         proximidad_resistencia_short and
         fuerza_giro_short and
+        evitar_subida_parabolica and # <-- Filtro anti-bomba alcista
         filtro_15m_short            
     )
 
@@ -488,7 +495,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     f"Tendencia Diaria (1D) y 4H Bajista confirmada",
                     f"SuperTrend 1H y 4H en concordancia BAJISTA",
                     f"Precio rozando resistencia clave o Banda Superior (Anticipación)",
-                    f"Estocástico en zona de techo extremo (K: {stoch_k:.1f}) a punto de girar"
+                    f"Estocástico en zona de techo extremo (K: {stoch_k:.1f}) a punto de girar",
+                    f"Estructura saludable (Sin pump parabólico vertical)"
                 ]
             })
 
@@ -876,7 +884,7 @@ if __name__ == "__main__":
                 
         if '1h' in analisis_btc:
             precio_btc = analisis_btc['1h']['precio']
-            msj_inicio = f"🤖 **BOT ACTIVO ✅ (Modo Anticipación)**\n\n"
+            msj_inicio = f"🤖 **BOT ACTIVO ✅ (Modo Anticipación con Filtros Anti-Trampa)**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n\n"
             msj_inicio += "📊 **Estado en Temporalidades:**\n"
             
@@ -896,7 +904,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado con entradas anticipadas y listo.")
+    logging.info("🚀 Bot actualizado con entradas anticipadas y filtros de seguridad.")
     
     analizar_mercado()
     
