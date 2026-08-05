@@ -389,8 +389,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 45
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 55
 
-    filtro_15m_long = m15['precio'] > m15['ema20']
-    filtro_15m_short = m15['precio'] < m15['ema20']
+    m15_cruce_alcista = m15.get('stoch_k', 0) > m15.get('stoch_d', 0)
+    filtro_15m_long = (m15['precio'] > m15['ema20']) or m15_cruce_alcista
+    m15_cruce_bajista = m15.get('stoch_k', 0) < m15.get('stoch_d', 0)
+    filtro_15m_short = (m15['precio'] < m15['ema20']) or m15_cruce_bajista
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and  
