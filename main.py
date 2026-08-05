@@ -391,19 +391,26 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     m15_cruce_bajista = m15.get('stoch_k', 0) < m15.get('stoch_d', 0)
     filtro_15m_short = (m15['precio'] < m15['ema20']) or m15_cruce_bajista
 
-    # ==========================================
-    # NUEVA LÓGICA DE ANTICIPACIÓN SNIPER 10X
+   # ==========================================
+    # LÓGICA DE ANTICIPACIÓN SNIPER 10X (CORREGIDA Y ALINEADA)
     # ==========================================
     stoch_k = h1['stoch_k']
     stoch_d = h1['stoch_d']
     diferencia_stoch = abs(stoch_k - stoch_d)
     
-    # 1. LONG ANTICIPADO (Precio rozando suelo/soporte con estocástico abajo a punto de girar)
+    # Exigir que el SuperTrend de 1H y 4H acompañe estrictamente la dirección
+    st_1h_alcista = h1['supertrend_estado'].startswith("🟢")
+    st_4h_alcista = h4['supertrend_estado'].startswith("🟢")
+    st_1h_bajista = h1['supertrend_estado'].startswith("🔴")
+    st_4h_bajista = h4['supertrend_estado'].startswith("🔴")
+
+    # 1. LONG ANTICIPADO (Todo debe ser alcista)
     fuerza_giro_long = (stoch_k <= 28) and (diferencia_stoch <= 4.0)
     proximidad_soporte_long = h1['precio'] <= (h1['soporte'] * 1.015) or (h1['precio'] <= h1['bb_lower'] * 1.01)
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and  
+        st_4h_alcista and st_1h_alcista and # <-- NUEVO: SuperTrend coherente
         adx_aprobado_long and
         proximidad_soporte_long and
         fuerza_giro_long and
@@ -435,18 +442,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
                     f"Tendencia Diaria (1D) y 4H Alcista confirmada",
+                    f"SuperTrend 1H y 4H en concordancia ALCISTA",
                     f"Precio rozando soporte clave o Banda Inferior (Anticipación)",
-                    f"Estocástico en zona de suelo extremo (K: {stoch_k:.1f}) a punto de girar",
-                    f"Temporalidad 15M acompañando el rechazo"
+                    f"Estocástico en zona de suelo extremo (K: {stoch_k:.1f}) a punto de girar"
                 ]
             })
 
-    # 2. SHORT ANTICIPADO (Precio rozando techo/resistencia con estocástico arriba a punto de girar)
+    # 2. SHORT ANTICIPADO (Todo debe ser bajista)
     fuerza_giro_short = (stoch_k >= 72) and (diferencia_stoch <= 4.0)
     proximidad_resistencia_short = h1['precio'] >= (h1['resistencia'] * 0.985) or (h1['precio'] >= h1['bb_upper'] * 0.99)
 
     gatillo_short_10x = (
         d1['es_bajista'] and h4['es_bajista'] and  
+        st_4h_bajista and st_1h_bajista and # <-- NUEVO: SuperTrend coherente
         adx_aprobado_short and
         proximidad_resistencia_short and
         fuerza_giro_short and
@@ -478,9 +486,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
                     f"Tendencia Diaria (1D) y 4H Bajista confirmada",
+                    f"SuperTrend 1H y 4H en concordancia BAJISTA",
                     f"Precio rozando resistencia clave o Banda Superior (Anticipación)",
-                    f"Estocástico en zona de techo extremo (K: {stoch_k:.1f}) a punto de girar",
-                    f"Temporalidad 15M acompañando el rechazo"
+                    f"Estocástico en zona de techo extremo (K: {stoch_k:.1f}) a punto de girar"
                 ]
             })
 
