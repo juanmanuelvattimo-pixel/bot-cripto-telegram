@@ -151,9 +151,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     )
 
     if rsi < 48 and condicion_long:
-        # SL dinámico técnico basado en soporte y ATR
         stop_loss_tecnico = soporte - (1.0 * atr)
-        # Tope estricto de máximo 2% de distancia en el precio
         stop_loss_maximo = precio_entrada * 0.98  
         stop_loss = max(stop_loss_tecnico, stop_loss_maximo)
         
@@ -189,7 +187,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         
     if rsi > 52 and condicion_short:
         stop_loss_tecnico = resistencia + (1.0 * atr)
-        stop_loss_maximo = precio_entrada * 1.02  # Tope estricto de máximo 2% arriba
+        stop_loss_maximo = precio_entrada * 1.02  
         stop_loss = min(stop_loss_tecnico, stop_loss_maximo)
         
         tp1 = precio_entrada - (atr * 2.0)
@@ -394,19 +392,22 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     m15_cruce_bajista = m15.get('stoch_k', 0) < m15.get('stoch_d', 0)
     filtro_15m_short = (m15['precio'] < m15['ema20']) or m15_cruce_bajista
     
+    # ==========================================
+    # GATILLO LONG 10X (CON SUPERTREND ESTRICTO EN 4H)
+    # ==========================================
     gatillo_long_10x = (
-    d1['es_alcista'] and h4['es_alcista'] and  
-    (h4['supertrend_estado'] == "🟢 ALCISTA") and # <--- AÑADIR ESTE FILTRO
-    adx_aprobado_long and
-    (h1['supertrend_estado'] == "🟢 ALCISTA") and
-    pullback_long and
-    filtro_estocastico_long and  
-    filtro_15m_long             
-)
+        d1['es_alcista'] and h4['es_alcista'] and  
+        (h4['supertrend_estado'] == "🟢 ALCISTA") and  # <--- CONFIRMACIÓN ESTRICTA SUPERTREND 4H
+        adx_aprobado_long and
+        (h1['supertrend_estado'] == "🟢 ALCISTA") and
+        pullback_long and
+        filtro_estocastico_long and  
+        filtro_15m_long             
+    )
 
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.0 * atr_act)
-        sl_max_2pct = precio_act * 0.98  # Límite estricto del 2%
+        sl_max_2pct = precio_act * 0.98  
         sl_final = max(sl_tecnico, sl_max_2pct)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
@@ -429,6 +430,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
                     f"Cascada validada: Tendencia Diaria (1D) y 4H Alcista aprobada",
+                    f"SuperTrend 4H Confirmado (🟢 ALCISTA)",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
@@ -436,19 +438,22 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 ]
             })
 
-   gatillo_short_10x = (
-    d1['es_bajista'] and h4['es_bajista'] and  
-    (h4['supertrend_estado'] == "🔴 BAJISTA") and # <--- AÑADIR ESTE FILTRO
-    adx_aprobado_short and
-    (h1['supertrend_estado'] == "🔴 BAJISTA") and
-    pullback_short and
-    filtro_estocastico_short and 
-    filtro_15m_short            
-)
+    # ==========================================
+    # GATILLO SHORT 10X (CON SUPERTREND ESTRICTO EN 4H)
+    # ==========================================
+    gatillo_short_10x = (
+        d1['es_bajista'] and h4['es_bajista'] and  
+        (h4['supertrend_estado'] == "🔴 BAJISTA") and  # <--- CONFIRMACIÓN ESTRICTA SUPERTREND 4H
+        adx_aprobado_short and
+        (h1['supertrend_estado'] == "🔴 BAJISTA") and
+        pullback_short and
+        filtro_estocastico_short and 
+        filtro_15m_short            
+    )
 
     if gatillo_short_10x:
         sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
-        sl_max_2pct = precio_act * 1.02  # Límite estricto del 2%
+        sl_max_2pct = precio_act * 1.02  
         sl_final = min(sl_tecnico, sl_max_2pct)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
@@ -471,6 +476,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
                     f"Cascada validada: Tendencia Diaria (1D) y 4H Bajista aprobada",
+                    f"SuperTrend 4H Confirmado (🔴 BAJISTA)",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
