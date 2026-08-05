@@ -151,7 +151,9 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     )
 
     if rsi < 48 and condicion_long:
+        # SL dinámico técnico basado en soporte y ATR
         stop_loss_tecnico = soporte - (1.0 * atr)
+        # Tope estricto de máximo 2% de distancia en el precio
         stop_loss_maximo = precio_entrada * 0.98  
         stop_loss = max(stop_loss_tecnico, stop_loss_maximo)
         
@@ -187,7 +189,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         
     if rsi > 52 and condicion_short:
         stop_loss_tecnico = resistencia + (1.0 * atr)
-        stop_loss_maximo = precio_entrada * 1.02  
+        stop_loss_maximo = precio_entrada * 1.02  # Tope estricto de máximo 2% arriba
         stop_loss = min(stop_loss_tecnico, stop_loss_maximo)
         
         tp1 = precio_entrada - (atr * 2.0)
@@ -246,9 +248,6 @@ def analizar_par_completo(symbol, timeframe):
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
         df['bb_lower'] = indicator_bb.bollinger_lband()
-        df['bb_middle'] = indicator_bb.bollinger_mavg()
-        # Cálculo del Ancho de Bandas de Bollinger (BBW) en porcentaje respecto a la media
-        df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
         
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
         df['adx'] = adx_ind.adx()
@@ -289,7 +288,6 @@ def analizar_par_completo(symbol, timeframe):
         minus_di = df['minus_di'].iloc[-1]
         rsi = df['rsi'].iloc[-1]
         mfi = df['mfi'].iloc[-1]
-        bb_width = df['bb_width'].iloc[-1] if not df['bb_width'].empty else 0.05
         atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
         
         supertrend_buy = (st_dir_prev == -1) and (st_dir == 1)
@@ -325,7 +323,6 @@ def analizar_par_completo(symbol, timeframe):
             'rsi': rsi,
             'mfi': mfi,
             'adx': adx,
-            'bb_width': bb_width,
             'adx_direccion': adx_direccion,
             'adx_fuerza': adx_fuerza,
             'es_alcista': puntos_alcistas >= 3,
@@ -383,7 +380,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    adx_aprobado_long = h1['adx'] >= 20  and h1['rsi'] > 40 and h1['rsi'] < 68
+    adx_aprobado_long = h1['adx'] >= 20 and h1['rsi'] > 40 and h1['rsi'] < 68
     adx_aprobado_short = h1['adx'] >= 20 and h1['rsi'] > 32 and h1['rsi'] < 60
 
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.015) and h1['precio'] >= (h1['ema20'] * 0.985)
@@ -397,25 +394,18 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     m15_cruce_bajista = m15.get('stoch_k', 0) < m15.get('stoch_d', 0)
     filtro_15m_short = (m15['precio'] < m15['ema20']) or m15_cruce_bajista
 
-    # =========================================================================
-    # NUEVO FILTRO DE BANDAS DE BOLLINGER (EVITA ZONAS DE COMPRESIÓN / RANGO)
-    # Se exige un ancho mínimo de bandas (bb_width > 0.015 o 1.5%) para operar tendencia
-    # =========================================================================
-    filtro_bb_volatilidad = h1['bb_width'] > 0.015
-
     gatillo_long_10x = (
         d1['es_alcista'] and h4['es_alcista'] and  
         adx_aprobado_long and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
         filtro_estocastico_long and  
-        filtro_15m_long and
-        filtro_bb_volatilidad            # <- Filtro Bollinger integrado aquí
+        filtro_15m_long             
     )
 
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.0 * atr_act)
-        sl_max_2pct = precio_act * 0.98  
+        sl_max_2pct = precio_act * 0.98  # Límite estricto del 2%
         sl_final = max(sl_tecnico, sl_max_2pct)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
@@ -441,8 +431,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
-                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo",
-                    f"Volatilidad de Bollinger adecuada (Ancho: {h1['bb_width']*100:.2f}% > 1.5% sin compresión)"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
 
@@ -452,13 +441,12 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
         filtro_estocastico_short and 
-        filtro_15m_short and
-        filtro_bb_volatilidad            # <- Filtro Bollinger integrado aquí
+        filtro_15m_short            
     )
 
     if gatillo_short_10x:
         sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
-        sl_max_2pct = precio_act * 1.02  
+        sl_max_2pct = precio_act * 1.02  # Límite estricto del 2%
         sl_final = min(sl_tecnico, sl_max_2pct)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
@@ -475,8 +463,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
+                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
@@ -484,8 +472,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado sobre las medias móviles rápidas (EMA10/EMA20)",
-                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo",
-                    f"Volatilidad de Bollinger adecuada (Ancho: {h1['bb_width']*100:.2f}% > 1.5% sin compresión)"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
 
@@ -502,8 +489,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         h4_adx_valido_spot and h4_rsi_valido_spot and (h4['supertrend_estado'] == "🟢 ALCISTA") and
         h1_adx_valido_spot and h1_rsi_valido_spot and (h1['supertrend_estado'] == "🟢 ALCISTA") and 
         estocastico_valido_spot and
-        pullback_spot_valido and
-        filtro_bb_volatilidad
+        pullback_spot_valido
     )
 
     if gatillo_spot:
@@ -533,8 +519,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     f"Tendencia Diaria (1D) Alcista",
                     f"SuperTrend Alcista activo en 4H y 1H",
                     f"ADX e Índice RSI en rangos permitidos para Spot (RSI 1H: {h1['rsi']:.1f})",
-                    f"Estocástico K < 50 ({h1['stoch_k']:.1f}) con Pullback adecuado a medias",
-                    f"Volatilidad Bollinger correcta (Ancho: {h1['bb_width']*100:.2f}%)"
+                    f"Estocástico K < 50 ({h1['stoch_k']:.1f}) con Pullback adecuado a medias"
                 ]
             })
 
@@ -579,7 +564,6 @@ def analizar_cripto_individual(ticker_raw):
             msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
             msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
             msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
-            msj += f"  - Bollinger Width: `{res['bb_width']*100:.2f}%`\n"
             msj += f"  - Soporte: `{fmt_precio(res['soporte'])}` | Resistencia: `{fmt_precio(res['resistencia'])}`\n\n"
         else:
             msj += f"• *Temporalidad {tf.upper()}*: Sin datos suficientes.\n\n"
@@ -618,7 +602,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (posible zona de compresión/rango o falta de tendencia).\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales.\n\n"
 
     if spot:
         for op in spot:
@@ -666,7 +650,7 @@ def procesar_par_paralelo(par):
     return sniper, spot, rango
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente con filtro de Bandas de Bollinger...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper y Rangos...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -695,7 +679,7 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper, entradas_sniper_spot, entradas_rango):
     if not entradas_sniper and not entradas_sniper_spot and not entradas_rango:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones o se encuentran en rango comprimido.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones.")
         return
 
     if entradas_rango:
@@ -884,9 +868,8 @@ if __name__ == "__main__":
                     rsi_val = data['rsi']
                     adx_val = data['adx']
                     fuerza_adx = data['adx_fuerza']
-                    bbw_val = data['bb_width'] * 100
                     
-                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | BBW: `{bbw_val:.2f}%`\n"
+                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | ADX: `{adx_val:.1f}` ({fuerza_adx})\n"
             
             enviar_telegram(msj_inicio)
         else:
@@ -894,7 +877,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado con filtro de Bollinger y listo.")
+    logging.info("🚀 Bot actualizado, concurrente y listo.")
     
     analizar_mercado()
     
