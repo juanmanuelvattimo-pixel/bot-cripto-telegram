@@ -121,7 +121,7 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     if not h1:
         return None
 
-    if h1['adx'] > 22:
+    if h1['adx'] > 11:
         return None
         
     precio_entrada = h1['precio']
@@ -151,11 +151,8 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     )
 
     if rsi < 48 and condicion_long:
-        # SL dinámico técnico basado en soporte y ATR
-        stop_loss_tecnico = soporte - (1.0 * atr)
-        # Tope estricto de máximo 2% de distancia en el precio
-        stop_loss_maximo = precio_entrada * 0.98  
-        stop_loss = max(stop_loss_tecnico, stop_loss_maximo)
+        # SL 100% dinámico técnico basado en soporte y ATR
+        stop_loss = soporte - (1.0 * atr)
         
         tp1 = precio_entrada + (atr * 2.0)
         tp2 = precio_entrada + (atr * 3.0)
@@ -188,9 +185,8 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         }]
         
     if rsi > 52 and condicion_short:
-        stop_loss_tecnico = resistencia + (1.0 * atr)
-        stop_loss_maximo = precio_entrada * 1.02  # Tope estricto de máximo 2% arriba
-        stop_loss = min(stop_loss_tecnico, stop_loss_maximo)
+        # SL 100% dinámico técnico basado en resistencia y ATR
+        stop_loss = resistencia + (1.0 * atr)
         
         tp1 = precio_entrada - (atr * 2.0)
         tp2 = precio_entrada - (atr * 3.0)
@@ -380,8 +376,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': sr.get('motivos', [])
             })
 
-    adx_aprobado_long = h1['adx'] >= 20 and h1['rsi'] > 40 and h1['rsi'] < 68
-    adx_aprobado_short = h1['adx'] >= 20 and h1['rsi'] > 32 and h1['rsi'] < 60
+    # ADX actualizado a 12
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 40 and h1['rsi'] < 68
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 32 and h1['rsi'] < 60
 
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.015) and h1['precio'] >= (h1['ema20'] * 0.985)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.985) and h1['precio'] <= (h1['ema20'] * 1.015)
@@ -404,9 +401,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_long_10x:
-        sl_tecnico = h1['soporte'] - (1.0 * atr_act)
-        sl_max_2pct = precio_act * 0.98  # Límite estricto del 2%
-        sl_final = max(sl_tecnico, sl_max_2pct)
+        # SL 100% dinámico basado en soporte y ATR (Sin tope estricto de 2%)
+        sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
         riesgo = precio_act - sl_final
@@ -445,9 +441,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_short_10x:
-        sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
-        sl_max_2pct = precio_act * 1.02  # Límite estricto del 2%
-        sl_final = min(sl_tecnico, sl_max_2pct)
+        # SL 100% dinámico basado en resistencia y ATR (Sin tope estricto de 2%)
+        sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
         riesgo = sl_final - precio_act
