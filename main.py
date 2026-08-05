@@ -151,7 +151,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
     )
 
     if rsi < 48 and condicion_long:
-        # SL 100% dinámico técnico basado en soporte y ATR
         stop_loss = soporte - (1.0 * atr)
         
         tp1 = precio_entrada + (atr * 2.0)
@@ -185,7 +184,6 @@ def detectar_rebote_rango_avanzado(h1, h4=None):
         }]
         
     if rsi > 52 and condicion_short:
-        # SL 100% dinámico técnico basado en resistencia y ATR
         stop_loss = resistencia + (1.0 * atr)
         
         tp1 = precio_entrada - (atr * 2.0)
@@ -307,7 +305,6 @@ def analizar_par_completo(symbol, timeframe):
         fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
         fibo_tp3_short = precio - (rango_fibo * 1.618)
 
-        # Condición flexible aplicada para el filtro diario (y mantenida compatible para cualquier TF)
         es_alcista_flexible = (precio > e55) or (st_dir == 1)
         es_bajista_flexible = (precio < e55) or (st_dir == -1)
 
@@ -335,6 +332,7 @@ def analizar_par_completo(symbol, timeframe):
             'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
             'ema10': df['ema10'].iloc[-1],
             'ema20': df['ema20'].iloc[-1],
+            'ema55': e55,  # <--- AQUÍ SE AGREGA 'ema55' PARA EVITAR EL KEYERROR
             'soporte': soporte_key,
             'resistencia': resistencia_key,
             'bb_upper': df['bb_upper'].iloc[-1],
