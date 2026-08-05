@@ -307,8 +307,9 @@ def analizar_par_completo(symbol, timeframe):
         fibo_tp2_short = swing_low if swing_low < precio else (precio - rango_fibo)
         fibo_tp3_short = precio - (rango_fibo * 1.618)
 
-        puntos_alcistas = sum([precio > e55, e10 > e20, st_dir == 1, mfi > 50])
-        puntos_bajistas = sum([precio <= e55, e10 <= e20, st_dir == -1, mfi <= 50])
+        # Condición flexible aplicada para el filtro diario (y mantenida compatible para cualquier TF)
+        es_alcista_flexible = (precio > e55) or (st_dir == 1)
+        es_bajista_flexible = (precio < e55) or (st_dir == -1)
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
         adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
@@ -321,8 +322,8 @@ def analizar_par_completo(symbol, timeframe):
             'adx': adx,
             'adx_direccion': adx_direccion,
             'adx_fuerza': adx_fuerza,
-            'es_alcista': puntos_alcistas >= 3,
-            'es_bajista': puntos_bajistas >= 3,
+            'es_alcista': es_alcista_flexible,
+            'es_bajista': es_bajista_flexible,
             'cruce_alcista': cruce_alcista_estocastico,
             'cruce_bajista': cruce_bajista_estocastico,
             'supertrend_buy': supertrend_buy,
@@ -458,8 +459,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
