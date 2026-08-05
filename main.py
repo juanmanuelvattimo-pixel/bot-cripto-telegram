@@ -395,13 +395,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_15m_short = (m15['precio'] < m15['ema20']) or m15_cruce_bajista
     
     gatillo_long_10x = (
-        d1['es_alcista'] and h4['es_alcista'] and  
-        adx_aprobado_long and
-        (h1['supertrend_estado'] == "🟢 ALCISTA") and
-        pullback_long and
-        filtro_estocastico_long and  
-        filtro_15m_long             
-    )
+    d1['es_alcista'] and h4['es_alcista'] and  
+    (h4['supertrend_estado'] == "🟢 ALCISTA") and # <--- AÑADIR ESTE FILTRO
+    adx_aprobado_long and
+    (h1['supertrend_estado'] == "🟢 ALCISTA") and
+    pullback_long and
+    filtro_estocastico_long and  
+    filtro_15m_long             
+)
 
     if gatillo_long_10x:
         sl_tecnico = h1['soporte'] - (1.0 * atr_act)
@@ -435,14 +436,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 ]
             })
 
-    gatillo_short_10x = (
-        d1['es_bajista'] and h4['es_bajista'] and  
-        adx_aprobado_short and
-        (h1['supertrend_estado'] == "🔴 BAJISTA") and
-        pullback_short and
-        filtro_estocastico_short and 
-        filtro_15m_short            
-    )
+   gatillo_short_10x = (
+    d1['es_bajista'] and h4['es_bajista'] and  
+    (h4['supertrend_estado'] == "🔴 BAJISTA") and # <--- AÑADIR ESTE FILTRO
+    adx_aprobado_short and
+    (h1['supertrend_estado'] == "🔴 BAJISTA") and
+    pullback_short and
+    filtro_estocastico_short and 
+    filtro_15m_short            
+)
 
     if gatillo_short_10x:
         sl_tecnico = h1['resistencia'] + (1.0 * atr_act)
