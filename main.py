@@ -378,8 +378,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             })
 
     # ADX actualizado a 12
-    adx_aprobado_long = h1['adx'] >= 18 and h1['rsi'] > 40 and h1['rsi'] < 68
-    adx_aprobado_short = h1['adx'] >= 18 and h1['rsi'] > 32 and h1['rsi'] < 60
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 40 and h1['rsi'] < 68
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 32 and h1['rsi'] < 60
 
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.015) and h1['precio'] >= (h1['ema20'] * 0.985)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.985) and h1['precio'] <= (h1['ema20'] * 1.015)
