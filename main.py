@@ -226,7 +226,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (SNIPER 10X - SISTEMA DE PUNTUACIÓN)
+# MÓDULO UNIFICADO DE EVALUACIÓN (SNIPER 10X)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -243,12 +243,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sniper_res = []
 
     # ADX optimizado y RSI simétrico seguro
-    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 40 and h1['rsi'] < 68
-    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 32 and h1['rsi'] < 60
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
 
+    # ==========================================
     # ZONA DE PULLBACK CONFIGURADA AL 2% (1.02 y 0.98)
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.98)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.98) and h1['precio'] <= (h1['ema20'] * 1.02)
+    # ==========================================
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)
 
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 45
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 55
@@ -256,48 +258,22 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_15m_long = m15['precio'] > m15['ema20']
     filtro_15m_short = m15['precio'] < m15['ema20']
 
-    # Filtros de tendencia
+    # Filtros estrictos de tendencia
     emas_1h_alcistas = (h1['ema10'] > h1['ema20']) and (h1['ema20'] > h1['ema55'])
     emas_1h_bajistas = (h1['ema10'] < h1['ema20']) and (h1['ema20'] < h1['ema55'])
 
     h4_alcista = (h4['supertrend_estado'] == "🟢 ALCISTA")
     h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA")
 
-    # ==========================================
-    # SISTEMA DE PUNTUACIÓN (SCORING SYSTEM) - LONG
-    # ==========================================
-    score_long = 0
-    motivos_long = []
-
-    if d1['es_alcista'] and h4_alcista and h4['es_alcista']:
-        score_long += 25
-        motivos_long.append("Alineación total de temporalidades mayores (1D y 4H)")
-        
-    if emas_1h_alcistas:
-        score_long += 20
-        motivos_long.append("EMAs 1H ordenadas alcistas")
-        
-    if h1['supertrend_estado'] == "🟢 ALCISTA":
-        score_long += 20
-        motivos_long.append("SuperTrend 1H en Estado ALCISTA (🟢)")
-        
-    if adx_aprobado_long:
-        score_long += 15
-        motivos_long.append(f"ADX Fuerte y RSI en rango seguro ({h1['rsi']:.1f})")
-        
-    if pullback_long:
-        score_long += 10
-        motivos_long.append("Pullback validado en zona de medias móviles")
-        
-    if filtro_estocastico_long:
-        score_long += 5
-        motivos_long.append("Cruce estricto de Estocástico alcista")
-        
-    if filtro_15m_long:
-        score_long += 5
-        motivos_long.append("Temporalidad 15M a favor")
-
-    gatillo_long_10x = score_long >= 75
+    gatillo_long_10x = (
+        d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
+        emas_1h_alcistas and 
+        adx_aprobado_long and
+        (h1['supertrend_estado'] == "🟢 ALCISTA") and
+        pullback_long and
+        filtro_estocastico_long and  
+        filtro_15m_long             
+    )
 
     if gatillo_long_10x:
         sl_final = h1['soporte'] - (1.0 * atr_act)
@@ -320,44 +296,24 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
-                'motivos': motivos_long + [f"Puntuación total obtenida: {score_long}/100 puntos"]
+                'motivos': [
+                    f"Alineación total: 1D, 4H (SuperTrend Alcista) y EMAs 1H ordenadas",
+                    f"SuperTrend 1H en Estado ALCISTA (🟢)",
+                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
+                    f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
+                ]
             })
 
-    # ==========================================
-    # SISTEMA DE PUNTUACIÓN (SCORING SYSTEM) - SHORT
-    # ==========================================
-    score_short = 0
-    motivos_short = []
-
-    if d1['es_bajista'] and h4_bajista and h4['es_bajista']:
-        score_short += 25
-        motivos_short.append("Alineación total de temporalidades mayores (1D y 4H)")
-        
-    if emas_1h_bajistas:
-        score_short += 20
-        motivos_short.append("EMAs 1H ordenadas bajistas")
-        
-    if h1['supertrend_estado'] == "🔴 BAJISTA":
-        score_short += 20
-        motivos_short.append("SuperTrend 1H en Estado BAJISTA (🔴)")
-        
-    if adx_aprobado_short:
-        score_short += 15
-        motivos_short.append(f"ADX Fuerte y RSI en rango seguro ({h1['rsi']:.1f})")
-        
-    if pullback_short:
-        score_short += 10
-        motivos_short.append("Pullback validado en zona de medias móviles")
-        
-    if filtro_estocastico_short:
-        score_short += 5
-        motivos_short.append("Cruce estricto de Estocástico bajista")
-        
-    if filtro_15m_short:
-        score_short += 5
-        motivos_short.append("Temporalidad 15M a favor")
-
-    gatillo_short_10x = score_short >= 75
+    gatillo_short_10x = (
+        d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
+        emas_1h_bajistas and 
+        adx_aprobado_short and
+        (h1['supertrend_estado'] == "🔴 BAJISTA") and
+        pullback_short and
+        filtro_estocastico_short and 
+        filtro_15m_short            
+    )
 
     if gatillo_short_10x:
         sl_final = h1['resistencia'] + (1.0 * atr_act)
@@ -380,7 +336,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
-                'motivos': motivos_short + [f"Puntuación total obtenida: {score_short}/100 puntos"]
+                'motivos': [
+                    f"Alineación total: 1D, 4H (SuperTrend Bajista) y EMAs 1H ordenadas",
+                    f"SuperTrend 1H en Estado BAJISTA (🔴)",
+                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
+                    f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
+                ]
             })
 
     return sniper_res
@@ -463,7 +425,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (Puntuación menor a 75).\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales.\n\n"
 
     enviar_telegram(msj)
 
@@ -483,7 +445,7 @@ def procesar_par_paralelo(par):
     return sniper
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente con Sistema de Puntuación...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -506,11 +468,11 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper):
     if not entradas_sniper:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda alcanza el puntaje mínimo de 75.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones.")
         return
 
     if entradas_sniper:
-        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS (SCORING):* ⚡\n\n"
+        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
         for op in entradas_sniper[:5]:
             msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
