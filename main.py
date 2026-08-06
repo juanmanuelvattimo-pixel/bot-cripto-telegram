@@ -288,7 +288,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = tp1 - precio_act[cite: 1]
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0[cite: 1]
         
-        if riesgo > 0 and ratio_actual >= 1.2: [cite: 1]
+        if riesgo > 0 and ratio_actual >= 1.2:
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
