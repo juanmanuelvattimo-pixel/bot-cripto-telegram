@@ -189,8 +189,8 @@ def analizar_par_completo(symbol, timeframe):
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
-        es_alcista_flexible = (precio > e55) or (st_dir == 1)
-        es_bajista_flexible = (precio < e55) or (st_dir == -1)
+        es_alcista_flexible = (precio > e55) and (st_dir == 1)
+        es_bajista_flexible = (precio < e55) and (st_dir == -1)
 
         adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
         adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
