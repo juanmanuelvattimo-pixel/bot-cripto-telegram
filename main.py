@@ -266,7 +266,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA")
 
     gatillo_long_10x = (
-        d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
+        d1['es_alcista'] and h4['es_alcista'] and  
         emas_1h_alcistas and 
         adx_aprobado_long and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
@@ -306,7 +306,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             })
 
     gatillo_short_10x = (
-        d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
+        d1['es_bajista'] and h4['es_bajista'] and  
         emas_1h_bajistas and 
         adx_aprobado_short and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
