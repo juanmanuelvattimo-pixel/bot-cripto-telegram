@@ -252,14 +252,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)[cite: 1]
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)[cite: 1]
 
-    # FILTRO ESTOCÁSTICO RELAJADO (Ampliación de rangos)
+    # FILTRO ESTOCÁSTICO RELAJADO
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 75
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 25
 
     filtro_15m_long = m15['precio'] > m15['ema20'][cite: 1]
     filtro_15m_short = m15['precio'] < m15['ema20'][cite: 1]
 
-    # FILTROS DE EMAS 1H RELAJADOS (Se elimina la cascada estricta de las 3 medias)
+    # FILTROS DE EMAS 1H RELAJADOS (Sin cascada estricta de 3 medias)
     emas_1h_alcistas = h1['ema10'] > h1['ema55']
     emas_1h_bajistas = h1['ema10'] < h1['ema55']
 
@@ -288,7 +288,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = tp1 - precio_act[cite: 1]
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0[cite: 1]
         
-        if riesgo > 0 and ratio_actual >= 1.2:  [cite: 1]
+        if riesgo > 0 and ratio_actual >= 1.2: [cite: 1]
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
