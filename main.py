@@ -247,21 +247,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
 
     # ==========================================
-    # ZONA DE PULLBACK CONFIGURADA AL 2% (1.03 y 0.97)
+    # ZONA DE PULLBACK CONFIGURADA AL 2% (1.02 y 0.98)
     # ==========================================
     pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
     pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)
 
-    # FILTRO ESTOCÁSTICO RELAJADO
-    filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 75
-    filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 25
+    filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 45
+    filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 55
 
     filtro_15m_long = m15['precio'] > m15['ema20']
     filtro_15m_short = m15['precio'] < m15['ema20']
 
-    # FILTROS DE EMAS 1H RELAJADOS (Sin cascada estricta de 3 medias)
-    emas_1h_alcistas = h1['ema10'] > h1['ema55']
-    emas_1h_bajistas = h1['ema10'] < h1['ema55']
+    # Filtros estrictos de tendencia
+    emas_1h_alcistas = (h1['ema10'] > h1['ema20']) and (h1['ema20'] > h1['ema55'])
+    emas_1h_bajistas = (h1['ema10'] < h1['ema20']) and (h1['ema20'] < h1['ema55'])
 
     h4_alcista = (h4['supertrend_estado'] == "🟢 ALCISTA")
     h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA")
@@ -288,7 +287,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.2: 
+        if riesgo > 0 and ratio_actual >= 1.2:  
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -298,11 +297,11 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación total: 1D, 4H (SuperTrend Alcista) y EMAs 1H relajadas",
+                    f"Alineación total: 1D, 4H (SuperTrend Alcista) y EMAs 1H ordenadas",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
-                    f"Cruce de Estocástico relajado y temporalidad 15M a favor como gatillo"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
 
@@ -328,7 +327,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = precio_act - tp1
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.2: 
+        if riesgo > 0 and ratio_actual >= 1.2:  
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -338,15 +337,16 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación total: 1D, 4H (SuperTrend Bajista) y EMAs 1H relajadas",
+                    f"Alineación total: 1D, 4H (SuperTrend Bajista) y EMAs 1H ordenadas",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
                     f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
                     f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
-                    f"Cruce de Estocástico relajado y temporalidad 15M a favor como gatillo"
+                    f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
 
     return sniper_res
+
 
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
@@ -367,7 +367,7 @@ def obtener_pares_top():
         ]
         
         pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
-        return [item['symbol'] for item in pares_usdt[:350]]
+        return [item['symbol'] for item in pares_usdt[:400]]
     except Exception as e:
         logging.error(f"Error obteniendo pares top: {e}")
         return []
