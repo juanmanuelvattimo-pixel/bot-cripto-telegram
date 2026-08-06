@@ -243,14 +243,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sniper_res = []
 
     # ADX optimizado y RSI simétrico seguro
-    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 40 and h1['rsi'] < 68
-    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 32 and h1['rsi'] < 60
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
 
     # ==========================================
     # ZONA DE PULLBACK CONFIGURADA AL 2% (1.02 y 0.98)
     # ==========================================
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.98)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.98) and h1['precio'] <= (h1['ema20'] * 1.02)
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)
 
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 45
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 55
