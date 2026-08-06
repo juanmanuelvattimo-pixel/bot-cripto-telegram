@@ -1,3 +1,27 @@
+gatillo_long_10x = (
+        d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
+        emas_1h_alcistas and 
+        filtro_rsi_long and
+        (h1['supertrend_estado'] == "🟢 ALCISTA") and
+        pullback_long and
+        filtro_estocastico_long and  
+        filtro_15m_long             
+    )
+
+    gatillo_short_10x = (
+        d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
+        emas_1h_bajistas and 
+        filtro_rsi_short and
+        (h1['supertrend_estado'] == "🔴 BAJISTA") and
+        pullback_short and
+        filtro_estocastico_short and 
+        filtro_15m_short            
+    )
+```[cite: 1]
+
+### Código corregido completo:
+
+```python
 import time
 import requests
 import ccxt
@@ -242,15 +266,11 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    # ADX optimizado y RSI simétrico seguro
-    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72
-    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
+    filtro_rsi_long = h1['rsi'] > 30 and h1['rsi'] < 75
+    filtro_rsi_short = h1['rsi'] > 25 and h1['rsi'] < 70
 
-    # ==========================================
-    # ZONA DE PULLBACK CONFIGURADA AL 2% (1.02 y 0.98)
-    # ==========================================
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)
+    pullback_long = h1['precio'] > h1['ema55']
+    pullback_short = h1['precio'] < h1['ema55']
 
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 45
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 55
@@ -258,7 +278,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_15m_long = m15['precio'] > m15['ema20']
     filtro_15m_short = m15['precio'] < m15['ema20']
 
-    # Filtros estrictos de tendencia
     emas_1h_alcistas = (h1['ema10'] > h1['ema20']) and (h1['ema20'] > h1['ema55'])
     emas_1h_bajistas = (h1['ema10'] < h1['ema20']) and (h1['ema20'] < h1['ema55'])
 
@@ -268,7 +287,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_long_10x = (
         d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
         emas_1h_alcistas and 
-        adx_aprobado_long and
+        filtro_rsi_long and
         (h1['supertrend_estado'] == "🟢 ALCISTA") and
         pullback_long and
         filtro_estocastico_long and  
@@ -299,8 +318,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': [
                     f"Alineación total: 1D, 4H (SuperTrend Alcista) y EMAs 1H ordenadas",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
-                    f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
+                    f"RSI en rango flexible seguro ({h1['rsi']:.1f}) [ADX omitido]",
+                    f"Tendencia validada por encima de la EMA 55 (Sin pullback estricto)",
                     f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
@@ -308,7 +327,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_short_10x = (
         d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
         emas_1h_bajistas and 
-        adx_aprobado_short and
+        filtro_rsi_short and
         (h1['supertrend_estado'] == "🔴 BAJISTA") and
         pullback_short and
         filtro_estocastico_short and 
@@ -339,8 +358,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'motivos': [
                     f"Alineación total: 1D, 4H (SuperTrend Bajista) y EMAs 1H ordenadas",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
-                    f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
+                    f"RSI en rango flexible seguro ({h1['rsi']:.1f}) [ADX omitido]",
+                    f"Tendencia validada por debajo de la EMA 55 (Sin pullback estricto)",
                     f"Cruce estricto de Estocástico y temporalidad 15M a favor como gatillo"
                 ]
             })
