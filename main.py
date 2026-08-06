@@ -242,29 +242,29 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    # ADX optimizado y RSI simétrico seguro[cite: 1]
-    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72[cite: 1]
-    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65[cite: 1]
+    # ADX optimizado y RSI simétrico seguro
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
 
     # ==========================================
-    # ZONA DE PULLBACK CONFIGURADA AL 2% (1.03 y 0.97)[cite: 1]
+    # ZONA DE PULLBACK CONFIGURADA AL 2% (1.03 y 0.97)
     # ==========================================
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)[cite: 1]
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)[cite: 1]
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)
 
     # FILTRO ESTOCÁSTICO RELAJADO
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 75
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 25
 
-    filtro_15m_long = m15['precio'] > m15['ema20'][cite: 1]
-    filtro_15m_short = m15['precio'] < m15['ema20'][cite: 1]
+    filtro_15m_long = m15['precio'] > m15['ema20']
+    filtro_15m_short = m15['precio'] < m15['ema20']
 
     # FILTROS DE EMAS 1H RELAJADOS (Sin cascada estricta de 3 medias)
     emas_1h_alcistas = h1['ema10'] > h1['ema55']
     emas_1h_bajistas = h1['ema10'] < h1['ema55']
 
-    h4_alcista = (h4['supertrend_estado'] == "🟢 ALCISTA")[cite: 1]
-    h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA")[cite: 1]
+    h4_alcista = (h4['supertrend_estado'] == "🟢 ALCISTA")
+    h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA")
 
     gatillo_long_10x = (
         d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
@@ -274,21 +274,21 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pullback_long and
         filtro_estocastico_long and  
         filtro_15m_long             
-    )[cite: 1]
+    )
 
     if gatillo_long_10x:
-        sl_final = h1['soporte'] - (1.0 * atr_act)[cite: 1]
-        pct_sl = abs((precio_act - sl_final) / precio_act) * 100[cite: 1]
+        sl_final = h1['soporte'] - (1.0 * atr_act)
+        pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        riesgo = precio_act - sl_final[cite: 1]
-        tp1 = precio_act + (riesgo * 1.5)[cite: 1]
-        tp2 = precio_act + (riesgo * 2.5)[cite: 1]
-        tp3 = precio_act + (riesgo * 3.5)[cite: 1]
+        riesgo = precio_act - sl_final
+        tp1 = precio_act + (riesgo * 1.5)
+        tp2 = precio_act + (riesgo * 2.5)
+        tp3 = precio_act + (riesgo * 3.5)
 
-        beneficio = tp1 - precio_act[cite: 1]
-        ratio_actual = beneficio / riesgo if riesgo > 0 else 0[cite: 1]
+        beneficio = tp1 - precio_act
+        ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.2:
+        if riesgo > 0 and ratio_actual >= 1.2: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -304,7 +304,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
                     f"Cruce de Estocástico relajado y temporalidad 15M a favor como gatillo"
                 ]
-            })[cite: 1]
+            })
 
     gatillo_short_10x = (
         d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
@@ -314,21 +314,21 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pullback_short and
         filtro_estocastico_short and 
         filtro_15m_short            
-    )[cite: 1]
+    )
 
     if gatillo_short_10x:
-        sl_final = h1['resistencia'] + (1.0 * atr_act)[cite: 1]
-        pct_sl = abs((sl_final - precio_act) / precio_act) * 100[cite: 1]
+        sl_final = h1['resistencia'] + (1.0 * atr_act)
+        pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
-        riesgo = sl_final - precio_act[cite: 1]
-        tp1 = precio_act - (riesgo * 1.5)[cite: 1]
-        tp2 = precio_act - (riesgo * 2.5)[cite: 1]
-        tp3 = precio_act - (riesgo * 3.5)[cite: 1]
+        riesgo = sl_final - precio_act
+        tp1 = precio_act - (riesgo * 1.5)
+        tp2 = precio_act - (riesgo * 2.5)
+        tp3 = precio_act - (riesgo * 3.5)
         
-        beneficio = precio_act - tp1[cite: 1]
-        ratio_actual = beneficio / riesgo if riesgo > 0 else 0[cite: 1]
+        beneficio = precio_act - tp1
+        ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.2: [cite: 1]
+        if riesgo > 0 and ratio_actual >= 1.2: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -344,9 +344,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
                     f"Cruce de Estocástico relajado y temporalidad 15M a favor como gatillo"
                 ]
-            })[cite: 1]
+            })
 
-    return sniper_res[cite: 1]
+    return sniper_res
 
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
