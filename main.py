@@ -1,27 +1,4 @@
-gatillo_long_10x = (
-        d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
-        emas_1h_alcistas and 
-        filtro_rsi_long and
-        (h1['supertrend_estado'] == "🟢 ALCISTA") and
-        pullback_long and
-        filtro_estocastico_long and  
-        filtro_15m_long             
-    )
 
-    gatillo_short_10x = (
-        d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
-        emas_1h_bajistas and 
-        filtro_rsi_short and
-        (h1['supertrend_estado'] == "🔴 BAJISTA") and
-        pullback_short and
-        filtro_estocastico_short and 
-        filtro_15m_short            
-    )
-```[cite: 1]
-
-### Código corregido completo:
-
-```python
 import time
 import requests
 import ccxt
