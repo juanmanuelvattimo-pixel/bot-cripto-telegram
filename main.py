@@ -249,8 +249,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     # ==========================================
     # ZONA DE PULLBACK CONFIGURADA AL 2% (1.03 y 0.97)
     # ==========================================
-    pullback_long = h1['precio'] <= h1['ema10'] and h1['precio'] >= h1['ema20']
-    pullback_short = h1['precio'] >= h1['ema10'] and h1['precio'] <= h1['ema20']
+    pullback_long = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.98)
+    pullback_short = h1['precio'] >= (h1['ema10'] * 0.98) and h1['precio'] <= (h1['ema20'] * 1.02)
     
     # FILTRO ESTOCÁSTICO RELAJADO
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 75
