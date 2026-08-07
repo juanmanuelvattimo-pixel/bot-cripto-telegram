@@ -243,15 +243,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sniper_res = []
 
     # ADX optimizado y RSI simétrico seguro
-    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72
-    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
+    adx_aprobado_long = h1['adx'] >= 22 and h1['rsi'] > 40 and h1['rsi'] < 68
+    adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 32 and h1['rsi'] < 60
 
     # ==========================================
     # ZONA DE PULLBACK CONFIGURADA AL 2% (1.03 y 0.97)
     # ==========================================
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.03) and h1['precio'] >= (h1['ema20'] * 0.97)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.97) and h1['precio'] <= (h1['ema20'] * 1.03)
-
+    pullback_long = h1['precio'] <= h1['ema10'] and h1['precio'] >= h1['ema20']
+    pullback_short = h1['precio'] >= h1['ema10'] and h1['precio'] <= h1['ema20']
+    
     # FILTRO ESTOCÁSTICO RELAJADO
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 75
     filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 25
@@ -288,7 +288,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.2: 
+        if riesgo > 0 and ratio_actual >= 1.8: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
