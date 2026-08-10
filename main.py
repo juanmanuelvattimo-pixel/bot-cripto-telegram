@@ -225,7 +225,7 @@ def analizar_par_completo(symbol, timeframe):
     except Exception as e:
         return None
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (INTEGRADO Y HÍBRIDO)
+# MÓDULO UNIFICADO DE EVALUACIÓN (CORREGIDO Y BLINDADO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -242,8 +242,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sniper_res = []
 
     # ADX optimizado y rangos seguros
-    adx_aprobado_long = h1['adx'] >= 22 and h1['rsi'] > 35 and h1['rsi'] < 72
-    adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 28 and h1['rsi'] < 65
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
 
     # ==========================================
     # 1. FILTRO 4H (Estructura de SuperTrend sin restricciones ciegas de RSI)
@@ -254,32 +254,32 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     # ==========================================
     # 2. GATILLOS HÍBRIDOS 1H (Quiebre Inicial + Continuación de Pausa)
     # ==========================================
-    # Quiebre inicial (cuando arranca el impulso de cero)
-    quiebre_inicial_long = h1['supertrend_buy']
-    quiebre_inicial_short = h1['supertrend_sell']
+    quiebre_inicial_long = h1.get('supertrend_buy', False)
+    quiebre_inicial_short = h1.get('supertrend_sell', False)
 
-    # Continuación tras una pausa/rango (el precio descansó y sale disparado a favor)
     continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'] and (h1['ema10'] > h1['ema20'])
     continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'] and (h1['ema10'] < h1['ema55'])
 
-    # Unificación de ambos escenarios en 1H
     gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
     gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
 
     # ==========================================
-    # 3. FILTRO 15M (Sincronizado con control de agotamiento ATR)
+    # 3. FILTRO 15M (Sincronizado de forma segura)
     # ==========================================
     distancia_15m = abs(m15['precio'] - m15['ema10'])
     exhaustion_limit = m15['atr'] * 1.8 
 
-    filtro_15m_long_sano = m15['cierra_arriba_ema10'] and (distancia_15m <= exhaustion_limit) and (m15['stoch_k'] > m15['stoch_d'])
-    filtro_15m_short_sano = m15['cierra_abajo_ema10'] and (distancia_15m <= exhaustion_limit) and (m15['stoch_k'] < m15['stoch_d'])
+    stoch_k_15m = m15.get('stoch_k', 50)
+    stoch_d_15m = m15.get('stoch_d', 50)
+
+    filtro_15m_long_sano = m15['cierra_arriba_ema10'] and (distancia_15m <= exhaustion_limit) and (stoch_k_15m > stoch_d_15m)
+    filtro_15m_short_sano = m15['cierra_abajo_ema10'] and (distancia_15m <= exhaustion_limit) and (stoch_k_15m < stoch_d_15m)
 
     emas_1h_alcistas = h1['ema10'] > h1['ema55']
     emas_1h_bajistas = h1['ema10'] < h1['ema55']
 
-    filtro_estocastico_long = h1['stoch_k'] < 75
-    filtro_estocastico_short = h1['stoch_k'] > 25
+    filtro_estocastico_long = h1.get('stoch_k', 50) < 75
+    filtro_estocastico_short = h1.get('stoch_k', 50) > 25
 
     # ==========================================
     # 4. GATILLOS FINALES 10X
@@ -349,7 +349,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
@@ -361,7 +361,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             })
 
     return sniper_res
-
 
 
 # ==========================================
