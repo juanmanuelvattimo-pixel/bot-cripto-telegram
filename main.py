@@ -247,10 +247,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 32 and h1['rsi'] < 60
 
     # ==========================================
-    # ZONA DE PULLBACK CONFIGURADA AL 2% (1.03 y 0.97)
+    # ZONA DE PULLBACK AJUSTADA A EMA 10 DE 1 HORA
     # ==========================================
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.02) and h1['precio'] >= (h1['ema20'] * 0.98)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.98) and h1['precio'] <= (h1['ema20'] * 1.02)
+    # Para LONG: Exigimos que el precio esté más cerca o haya retrocedido a buscar la EMA 10 de 1H
+    pullback_long = (h1['precio'] <= h1['ema10']) and (h1['precio'] >= h1['ema20'])
+    
+    # Para SHORT: Exigimos que el precio haya rebotado hacia la EMA 10 de 1H
+    pullback_short = (h1['precio'] >= h1['ema10']) and (h1['precio'] <= h1['ema20'])
     
     # FILTRO ESTOCÁSTICO RELAJADO
     filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 75
