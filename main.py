@@ -224,9 +224,8 @@ def analizar_par_completo(symbol, timeframe):
         }
     except Exception as e:
         return None
-
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (SNIPER 10X)
+# MÓDULO UNIFICADO DE EVALUACIÓN (INTEGRADO Y HÍBRIDO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -242,38 +241,57 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    # ADX optimizado y RSI simétrico seguro
-    adx_aprobado_long = h1['adx'] >= 22 and h1['rsi'] > 40 and h1['rsi'] < 68
-    adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 32 and h1['rsi'] < 60
+    # ADX optimizado y rangos seguros
+    adx_aprobado_long = h1['adx'] >= 22 and h1['rsi'] > 35 and h1['rsi'] < 72
+    adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 28 and h1['rsi'] < 65
 
     # ==========================================
-    # ZONA DE PULLBACK CONFIGURADA AL 2% (1.03 y 0.97)
+    # 1. FILTRO 4H (Estructura de SuperTrend sin restricciones ciegas de RSI)
     # ==========================================
-    pullback_long = h1['precio'] <= (h1['ema10'] * 1.01) and h1['precio'] >= (h1['ema20'] * 0.99)
-    pullback_short = h1['precio'] >= (h1['ema10'] * 0.99) and h1['precio'] <= (h1['ema20'] * 1.01)
-    
-    # FILTRO ESTOCÁSTICO RELAJADO
-    filtro_estocastico_long = h1['cruce_alcista'] and h1['stoch_k'] < 75
-    filtro_estocastico_short = h1['cruce_bajista'] and h1['stoch_k'] > 25
+    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20'])
+    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20'])
 
-    filtro_15m_long = m15['precio'] > m15['ema20']
-    filtro_15m_short = m15['precio'] < m15['ema20']
+    # ==========================================
+    # 2. GATILLOS HÍBRIDOS 1H (Quiebre Inicial + Continuación de Pausa)
+    # ==========================================
+    # Quiebre inicial (cuando arranca el impulso de cero)
+    quiebre_inicial_long = h1['supertrend_buy']
+    quiebre_inicial_short = h1['supertrend_sell']
 
-    # FILTROS DE EMAS 1H RELAJADOS (Sin cascada estricta de 3 medias)
+    # Continuación tras una pausa/rango (el precio descansó y sale disparado a favor)
+    continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'] and (h1['ema10'] > h1['ema20'])
+    continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'] and (h1['ema10'] < h1['ema55'])
+
+    # Unificación de ambos escenarios en 1H
+    gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
+    gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
+
+    # ==========================================
+    # 3. FILTRO 15M (Sincronizado con control de agotamiento ATR)
+    # ==========================================
+    distancia_15m = abs(m15['precio'] - m15['ema10'])
+    exhaustion_limit = m15['atr'] * 1.8 
+
+    filtro_15m_long_sano = m15['cierra_arriba_ema10'] and (distancia_15m <= exhaustion_limit) and (m15['stoch_k'] > m15['stoch_d'])
+    filtro_15m_short_sano = m15['cierra_abajo_ema10'] and (distancia_15m <= exhaustion_limit) and (m15['stoch_k'] < m15['stoch_d'])
+
     emas_1h_alcistas = h1['ema10'] > h1['ema55']
     emas_1h_bajistas = h1['ema10'] < h1['ema55']
 
-    h4_alcista = (h4['supertrend_estado'] == "🟢 ALCISTA")
-    h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA")
+    filtro_estocastico_long = h1['stoch_k'] < 75
+    filtro_estocastico_short = h1['stoch_k'] > 25
 
+    # ==========================================
+    # 4. GATILLOS FINALES 10X
+    # ==========================================
     gatillo_long_10x = (
-        d1['es_alcista'] and h4_alcista and h4['es_alcista'] and  
+        d1['es_alcista'] and 
+        h4_alcista_real and  
         emas_1h_alcistas and 
         adx_aprobado_long and
-        (h1['supertrend_estado'] == "🟢 ALCISTA") and
-        pullback_long and
+        gatillo_1h_long and  
         filtro_estocastico_long and  
-        filtro_15m_long             
+        filtro_15m_long_sano             
     )
 
     if gatillo_long_10x:
@@ -281,14 +299,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
         riesgo = precio_act - sl_final
-        tp1 = precio_act + (riesgo * 1.8)
-        tp2 = precio_act + (riesgo * 2.8)
-        tp3 = precio_act + (riesgo * 3.8)
+        tp1 = precio_act + (riesgo * 1.5)
+        tp2 = precio_act + (riesgo * 2.5)
+        tp3 = precio_act + (riesgo * 3.5)
 
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.8: 
+        if riesgo > 0 and ratio_actual >= 1.2: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -298,22 +316,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación total: 1D, 4H (SuperTrend Alcista) y EMAs 1H relajadas",
+                    f"Alineación alcista: 1D, 4H y quiebre/continuación limpia en 1H",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
-                    f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
-                    f"Cruce de Estocástico relajado y temporalidad 15M a favor como gatillo"
+                    f"15M sincronizado sin agotamiento y estocástico a favor"
                 ]
             })
 
     gatillo_short_10x = (
-        d1['es_bajista'] and h4_bajista and h4['es_bajista'] and  
+        d1['es_bajista'] and 
+        h4_bajista_real and  
         emas_1h_bajistas and 
         adx_aprobado_short and
-        (h1['supertrend_estado'] == "🔴 BAJISTA") and
-        pullback_short and
+        gatillo_1h_short and 
         filtro_estocastico_short and 
-        filtro_15m_short            
+        filtro_15m_short_sano            
     )
 
     if gatillo_short_10x:
@@ -321,9 +337,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
         riesgo = sl_final - precio_act
-        tp1 = precio_act - (riesgo * 1.8)
-        tp2 = precio_act - (riesgo * 2.8)
-        tp3 = precio_act - (riesgo * 3.8)
+        tp1 = precio_act - (riesgo * 1.5)
+        tp2 = precio_act - (riesgo * 2.5)
+        tp3 = precio_act - (riesgo * 3.5)
         
         beneficio = precio_act - tp1
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
@@ -333,20 +349,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación total: 1D, 4H (SuperTrend Bajista) y EMAs 1H relajadas",
+                    f"Alineación bajista: 1D, 4H y quiebre/continuación limpia en 1H",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"ADX 1H Fuerte y RSI en rango simétrico seguro ({h1['rsi']:.1f})",
-                    f"Pullback validado en zona equilibrada del 2% sobre las medias móviles",
-                    f"Cruce de Estocástico relajado y temporalidad 15M a favor como gatillo"
+                    f"15M sincronizado sin agotamiento y estocástico a favor"
                 ]
             })
 
     return sniper_res
+
+
 
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
