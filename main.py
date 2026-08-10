@@ -634,7 +634,7 @@ if __name__ == "__main__":
     analizar_mercado()
     
     while True:
-        time.sleep(3600)
+        time.sleep(1800)
         try:
             with open(lock_file, "w") as f:
                 f.write(str(os.getpid()))
