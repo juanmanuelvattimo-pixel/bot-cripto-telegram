@@ -271,10 +271,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     stoch_d_1h = h1.get('stoch_d', 50)
 
     # Para LONG: Busca el estocástico abajo (< 40) girando hacia arriba
-    filtro_estocastico_long = (stoch_k_1h < 40) and (stoch_k_1h > stoch_d_1h)
+    filtro_estocastico_long = (stoch_k_1h < 55) and (stoch_k_1h > stoch_d_1h)
     
     # Para SHORT: Busca el estocástico arriba (> 60) girando hacia abajo
-    filtro_estocastico_short = (stoch_k_1h > 60) and (stoch_k_1h < stoch_d_1h)
+    filtro_estocastico_short = (stoch_k_1h > 45) and (stoch_k_1h < stoch_d_1h)
 
     # ==========================================
     # 4. FILTRO 15M (Sincronizado de forma segura)
