@@ -243,8 +243,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sniper_res = []
 
     # ADX optimizado y rangos seguros
-    adx_aprobado_long = h1['adx'] >= 22 and h1['rsi'] > 35 and h1['rsi'] < 72
-    adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 28 and h1['rsi'] < 65
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 35 and h1['rsi'] < 72
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 28 and h1['rsi'] < 65
 
     # ==========================================
     # 1. FILTRO 4H (Estructura de SuperTrend)
