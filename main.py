@@ -226,7 +226,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN
+# MÓDULO UNIFICADO DE EVALUACIÓN (FLEXIBILIZADO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -242,34 +242,34 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
-    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
+    adx_aprobado_long = h1['adx'] >= 10 and h1['rsi'] > 20 and h1['rsi'] < 85
+    adx_aprobado_short = h1['adx'] >= 10 and h1['rsi'] > 15 and h1['rsi'] < 80
 
-    # Estructura 4H
-    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20'])
-    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20'])
+    # Estructura 4H (Flexibilizada: solo validamos que el SuperTrend acompañe)
+    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA")
+    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA")
 
     # Gatillos 1H 
     quiebre_inicial_long = h1.get('supertrend_buy', False)
     quiebre_inicial_short = h1.get('supertrend_sell', False)
-    continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'] and (h1['ema10'] > h1['ema55'])
-    continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'] and (h1['ema10'] < h1['ema55'])
+    continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10']
+    continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10']
 
     gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
     gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
 
-    # Estocástico 1H
+    # Estocástico 1H FLEXIBLE (Solo exigimos el cruce, sin importar el nivel de sobrecompra/sobreventa)
     stoch_k_1h = h1.get('stoch_k', 50)
     stoch_d_1h = h1.get('stoch_d', 50)
-    filtro_estocastico_long = (stoch_k_1h < 55) and (stoch_k_1h > stoch_d_1h)
-    filtro_estocastico_short = (stoch_k_1h > 45) and (stoch_k_1h < stoch_d_1h)
+    filtro_estocastico_long = stoch_k_1h > stoch_d_1h
+    filtro_estocastico_short = stoch_k_1h < stoch_d_1h
 
-    # Filtro Anti-Persecución 1H
+    # Filtro Anti-Persecución 1H (Ampliado ligeramente a 2.5 ATR)
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 2.2
+    max_extension_1h = h1['atr'] * 2.5
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # NUEVO: Filtro 15M Suave / Flexible (Solo confirma dirección con su EMA 10)
+    # Filtro 15M Suave
     filtro_15m_long_suave = m15['precio'] > m15['ema10']
     filtro_15m_short_suave = m15['precio'] < m15['ema10']
 
@@ -306,9 +306,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación alcista y precio controlado en 1H",
-                    f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"15M sincronizado de forma flexible con su EMA 10"
+                    "Alineación alcista en temporalidades mayores",
+                    "SuperTrend 1H en Estado ALCISTA (🟢)",
+                    "Cruce estocástico 1H a favor de tendencia"
                 ]
             })
 
@@ -341,14 +341,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación bajista y precio controlado en 1H",
-                    f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"15M sincronizado de forma flexible con su EMA 10"
+                    "Alineación bajista en temporalidades mayores",
+                    "SuperTrend 1H en Estado BAJISTA (🔴)",
+                    "Cruce estocástico 1H a favor de tendencia"
                 ]
             })
 
     return sniper_res
-
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
