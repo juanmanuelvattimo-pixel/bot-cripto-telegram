@@ -226,28 +226,24 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (INTEGRADO Y CORREGIDO PARA PULLBACKS)
-# ==========================================
-# ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (CON FILTRO ANTI-PERSECUCIÓN 1H)
+# MÓDULO UNIFICADO DE EVALUACIÓN (FLEXIBILIZADO: SIN BLOQUEO 15M Y ESTOCÁSTICO DE ZONA)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
-    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
+    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
         return None
 
     d1 = analisis_tf['1d']
     h4 = analisis_tf['4h']
     h1 = analisis_tf['1h']
-    m15 = analisis_tf['15m']
     
     precio_act = h1['precio']
     atr_act = h1['atr']
     
     sniper_res = []
 
-    # ADX optimizado y rangos seguros (flexibilizados)
+    # ADX optimizado y rangos seguros amplios
     adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
-    adx_aprobado_short = h1['adx'] >=12 and h1['rsi'] > 20 and h1['rsi'] < 75
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
     # ==========================================
     # 1. FILTRO 4H (Estructura de SuperTrend)
@@ -261,56 +257,38 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     quiebre_inicial_long = h1.get('supertrend_buy', False)
     quiebre_inicial_short = h1.get('supertrend_sell', False)
 
-    continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'] and (h1['ema10'] > h1['ema55'])
-    continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'] and (h1['ema10'] < h1['ema55'])
+    continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10']
+    continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10']
 
     gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
     gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
 
     # ==========================================
-    # 3. FILTROS ESTOCÁSTICOS RELAJADOS
+    # 3. FILTRO ESTOCÁSTICO DE ZONA (Sin requerir cruce milimétrico exacto)
     # ==========================================
     stoch_k_1h = h1.get('stoch_k', 50)
-    stoch_d_1h = h1.get('stoch_d', 50)
-
-    filtro_estocastico_long = (stoch_k_1h < 55) and (stoch_k_1h > stoch_d_1h)
-    filtro_estocastico_short = (stoch_k_1h > 45) and (stoch_k_1h < stoch_d_1h)
+    
+    # Se evalúa por zona general para evitar perder la entrada por diferencia de segundos en el cruce
+    filtro_estocastico_long = stoch_k_1h < 65
+    filtro_estocastico_short = stoch_k_1h > 35
 
     # ==========================================
-    # 4. FILTRO ANTI-PERSECUCIÓN 1H (NUEVO)
+    # 4. FILTRO ANTI-PERSECUCIÓN 1H
     # ==========================================
-    # Evita entrar si el precio ya se alejó demasiado de la EMA 10 (evita vender en el suelo o comprar en el techo)
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 2.2
+    max_extension_1h = h1['atr'] * 3.0
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
     # ==========================================
-    # 5. FILTRO 15M (Sincronizado y con margen ampliado)
-    # ==========================================
-    distancia_15m = abs(m15['precio'] - m15['ema10'])
-    exhaustion_limit = m15['atr'] * 2.5 
-
-    stoch_k_15m = m15.get('stoch_k', 50)
-    stoch_d_15m = m15.get('stoch_d', 50)
-
-    filtro_15m_long_sano = m15['cierra_arriba_ema10'] and (distancia_15m <= exhaustion_limit) and (stoch_k_15m > stoch_d_15m)
-    filtro_15m_short_sano = m15['cierra_abajo_ema10'] and (distancia_15m <= exhaustion_limit) and (stoch_k_15m < stoch_d_15m)
-
-    emas_1h_alcistas = h1['ema10'] > h1['ema55']
-    emas_1h_bajistas = h1['ema10'] < h1['ema55']
-
-    # ==========================================
-    # 6. GATILLOS FINALES 10X
+    # 5. GATILLOS FINALES 10X (Desacoplados de 15M para mayor fluidez)
     # ==========================================
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
-        emas_1h_alcistas and 
         adx_aprobado_long and
         gatillo_1h_long and  
         filtro_estocastico_long and  
-        filtro_1h_no_extendido and
-        filtro_15m_long_sano             
+        filtro_1h_no_extendido             
     )
 
     if gatillo_long_10x:
@@ -325,7 +303,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.5: 
+        if riesgo > 0 and ratio_actual >= 1.2: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -335,21 +313,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación alcista y precio cerca de la EMA en 1H",
+                    f"Alineación alcista de temporalidades mayores y control de extensión 1H",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"15M sincronizado y estocástico cruzando al alza"
+                    f"Estocástico en zona óptima de arranque"
                 ]
             })
 
     gatillo_short_10x = (
         d1['es_bajista'] and 
         h4_bajista_real and  
-        emas_1h_bajistas and 
         adx_aprobado_short and
         gatillo_1h_short and 
         filtro_estocastico_short and 
-        filtro_1h_no_extendido and
-        filtro_15m_short_sano            
+        filtro_1h_no_extendido            
     )
 
     if gatillo_short_10x:
@@ -364,7 +340,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = precio_act - tp1
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.5: 
+        if riesgo > 0 and ratio_actual >= 1.2: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -374,9 +350,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación bajista y precio controlado sin sobre-extensión en 1H",
+                    f"Alineación bajista de temporalidades mayores y control de extensión 1H",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"15M sincronizado y estocástico cruzando a la baja"
+                    f"Estocástico en zona óptima de arranque"
                 ]
             })
 
