@@ -266,7 +266,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     # Filtro Anti-Persecución 1H
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 2.5
+    max_extension_1h = h1['atr'] * 1
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
     # Filtro 15M Suave
