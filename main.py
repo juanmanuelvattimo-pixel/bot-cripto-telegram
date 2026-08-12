@@ -246,8 +246,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sniper_res = []
 
     # ADX optimizado y rangos seguros (flexibilizados)
-    adx_aprobado_long = h1['adx'] >= 8 and h1['rsi'] > 25 and h1['rsi'] < 80
-    adx_aprobado_short = h1['adx'] >= 8 and h1['rsi'] > 20 and h1['rsi'] < 75
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
+    adx_aprobado_short = h1['adx'] >=12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
     # ==========================================
     # 1. FILTRO 4H (Estructura de SuperTrend)
@@ -325,7 +325,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.2: 
+        if riesgo > 0 and ratio_actual >= 1.5: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -364,7 +364,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         beneficio = precio_act - tp1
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.2: 
+        if riesgo > 0 and ratio_actual >= 1.5: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
