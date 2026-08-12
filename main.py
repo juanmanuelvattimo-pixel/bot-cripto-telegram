@@ -226,7 +226,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (FLEXIBILIZADO)
+# MÓDULO UNIFICADO DE EVALUACIÓN
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -245,7 +245,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     adx_aprobado_long = h1['adx'] >= 10 and h1['rsi'] > 20 and h1['rsi'] < 85
     adx_aprobado_short = h1['adx'] >= 10 and h1['rsi'] > 15 and h1['rsi'] < 80
 
-    # Estructura 4H (Flexibilizada: solo validamos que el SuperTrend acompañe)
+    # Estructura 4H
     h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA")
     h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA")
 
@@ -258,13 +258,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
     gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
 
-    # Estocástico 1H FLEXIBLE (Solo exigimos el cruce, sin importar el nivel de sobrecompra/sobreventa)
+    # Estocástico 1H FLEXIBLE (Solo cruce)
     stoch_k_1h = h1.get('stoch_k', 50)
     stoch_d_1h = h1.get('stoch_d', 50)
     filtro_estocastico_long = stoch_k_1h > stoch_d_1h
     filtro_estocastico_short = stoch_k_1h < stoch_d_1h
 
-    # Filtro Anti-Persecución 1H (Ampliado ligeramente a 2.5 ATR)
+    # Filtro Anti-Persecución 1H
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
     max_extension_1h = h1['atr'] * 2.5
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
@@ -276,7 +276,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     emas_1h_alcistas = h1['ema10'] > h1['ema55']
     emas_1h_bajistas = h1['ema10'] < h1['ema55']
 
-    # GATILLOS FINALES
+    # GATILLOS FINALES LONG
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
@@ -293,25 +293,32 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         riesgo = precio_act - sl_final
         
-        beneficio = (precio_act + (riesgo * 1.5)) - precio_act
-        ratio_actual = beneficio / riesgo if riesgo > 0 else 0
-
         if riesgo > 0: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': precio_act + (riesgo * 1.5), 'pct_tp1': abs(((precio_act + (riesgo * 1.5)) - precio_act)/precio_act)*100,
-                'tp2': precio_act + (riesgo * 2.5), 'pct_tp2': abs(((precio_act + (riesgo * 2.5)) - precio_act)/precio_act)*100,
-                'tp3': precio_act + (riesgo * 3.5), 'pct_tp3': abs(((precio_act + (riesgo * 3.5)) - precio_act)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    "Alineación alcista en temporalidades mayores",
-                    "SuperTrend 1H en Estado ALCISTA (🟢)",
-                    "Cruce estocástico 1H a favor de tendencia"
-                ]
-            })
+            tp1 = precio_act + (riesgo * 1.5)
+            tp2 = precio_act + (riesgo * 2.5)
+            tp3 = precio_act + (riesgo * 3.5)
+            
+            beneficio = tp1 - precio_act
+            ratio_actual = beneficio / riesgo
+            
+            # FILTRO DE RATIO R:R > 1.2 RESTAURADO
+            if ratio_actual > 1.2:
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        "Alineación alcista en temporalidades mayores",
+                        "SuperTrend 1H en Estado ALCISTA (🟢)",
+                        f"Ratio R:R válido ({ratio_actual:.2f} > 1.2)"
+                    ]
+                })
 
+    # GATILLOS FINALES SHORT
     gatillo_short_10x = (
         d1['es_bajista'] and 
         h4_bajista_real and  
@@ -328,26 +335,33 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         riesgo = sl_final - precio_act
         
-        beneficio = precio_act - (precio_act - (riesgo * 1.5))
-        ratio_actual = beneficio / riesgo if riesgo > 0 else 0
-
         if riesgo > 0: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': precio_act - (riesgo * 1.5), 'pct_tp1': abs((precio_act - (precio_act - (riesgo * 1.5)))/precio_act)*100,
-                'tp2': precio_act - (riesgo * 2.5), 'pct_tp2': abs((precio_act - (precio_act - (riesgo * 2.5)))/precio_act)*100,
-                'tp3': precio_act - (riesgo * 3.5), 'pct_tp3': abs((precio_act - (precio_act - (riesgo * 3.5)))/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    "Alineación bajista en temporalidades mayores",
-                    "SuperTrend 1H en Estado BAJISTA (🔴)",
-                    "Cruce estocástico 1H a favor de tendencia"
-                ]
-            })
+            tp1 = precio_act - (riesgo * 1.5)
+            tp2 = precio_act - (riesgo * 2.5)
+            tp3 = precio_act - (riesgo * 3.5)
+            
+            beneficio = precio_act - tp1
+            ratio_actual = beneficio / riesgo
+            
+            # FILTRO DE RATIO R:R > 1.2 RESTAURADO
+            if ratio_actual > 1.2:
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        "Alineación bajista en temporalidades mayores",
+                        "SuperTrend 1H en Estado BAJISTA (🔴)",
+                        f"Ratio R:R válido ({ratio_actual:.2f} > 1.2)"
+                    ]
+                })
 
     return sniper_res
+
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
@@ -425,7 +439,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales.\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o R:R menor a 1.2).\n\n"
 
     enviar_telegram(msj)
 
