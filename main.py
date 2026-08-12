@@ -313,8 +313,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
                         "Alineación alcista en temporalidades mayores",
-                        "SuperTrend 1H en Estado ALCISTA (🟢)",
-                        f"Ratio R:R válido ({ratio_actual:.2f} > 1.2)"
+                        "SuperTrend 1H en Estado ALCISTA (🟢)"
                     ]
                 })
 
@@ -355,8 +354,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
                         "Alineación bajista en temporalidades mayores",
-                        "SuperTrend 1H en Estado BAJISTA (🔴)",
-                        f"Ratio R:R válido ({ratio_actual:.2f} > 1.2)"
+                        "SuperTrend 1H en Estado BAJISTA (🔴)"
                     ]
                 })
 
