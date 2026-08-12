@@ -292,30 +292,34 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_long_10x:
-        sl_final = h1['soporte'] - (1.0 * atr_act)
-        pct_sl = abs((precio_act - sl_final) / precio_act) * 100
+        # Ajuste de entrada 1.5% más abajo para evitar persecución / apuro (rango 1 a 2%)
+        precio_entrada = precio_act * 0.985
         
-        riesgo = precio_act - sl_final
-        tp1 = precio_act + (riesgo * 1.5)
-        tp2 = precio_act + (riesgo * 2.5)
-        tp3 = precio_act + (riesgo * 3.5)
+        sl_final = h1['soporte'] - (1.0 * atr_act)
+        pct_sl = abs((precio_entrada - sl_final) / precio_entrada) * 100
+        
+        riesgo = precio_entrada - sl_final
+        tp1 = precio_entrada + (riesgo * 1.5)
+        tp2 = precio_entrada + (riesgo * 2.5)
+        tp3 = precio_entrada + (riesgo * 3.5)
 
-        beneficio = tp1 - precio_act
+        beneficio = tp1 - precio_entrada
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
         if riesgo > 0 and ratio_actual >= 1.2: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                'precio': precio_entrada, 'sl': sl_final, 'pct_sl': pct_sl,
+                'tp1': tp1, 'pct_tp1': abs((tp1 - precio_entrada)/precio_entrada)*100,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_entrada)/precio_entrada)*100,
+                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_entrada)/precio_entrada)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
                     f"Alineación alcista de temporalidades mayores y control de extensión 1H",
                     f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"Estocástico en zona óptima de arranque"
+                    f"Estocástico en zona óptima de arranque",
+                    f"Entrada optimizada 1.5% más abajo para mejor re-testeo"
                 ]
             })
 
@@ -329,34 +333,39 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     )
 
     if gatillo_short_10x:
+        # Ajuste de entrada 1.5% más arriba para evitar persecución / apuro (rango 1 a 2%)
+        precio_entrada = precio_act * 1.015
+        
         sl_final = h1['resistencia'] + (1.0 * atr_act)
-        pct_sl = abs((sl_final - precio_act) / precio_act) * 100
+        pct_sl = abs((sl_final - precio_entrada) / precio_entrada) * 100
         
-        riesgo = sl_final - precio_act
-        tp1 = precio_act - (riesgo * 1.5)
-        tp2 = precio_act - (riesgo * 2.5)
-        tp3 = precio_act - (riesgo * 3.5)
+        riesgo = sl_final - precio_entrada
+        tp1 = precio_entrada - (riesgo * 1.5)
+        tp2 = precio_entrada - (riesgo * 2.5)
+        tp3 = precio_entrada - (riesgo * 3.5)
         
-        beneficio = precio_act - tp1
+        beneficio = precio_entrada - tp1
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
         if riesgo > 0 and ratio_actual >= 1.2: 
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                'precio': precio_entrada, 'sl': sl_final, 'pct_sl': pct_sl,
+                'tp1': tp1, 'pct_tp1': abs((precio_entrada - tp1)/precio_entrada)*100,
+                'tp2': tp2, 'pct_tp2': abs((precio_entrada - tp2)/precio_entrada)*100,
+                'tp3': tp3, 'pct_tp3': abs((precio_entrada - tp3)/precio_entrada)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
                     f"Alineación bajista de temporalidades mayores y control de extensión 1H",
                     f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"Estocástico en zona óptima de arranque"
+                    f"Estocástico en zona óptima de arranque",
+                    f"Entrada optimizada 1.5% más arriba para mejor re-testeo"
                 ]
             })
 
     return sniper_res
+
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
