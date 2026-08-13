@@ -242,8 +242,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    adx_aprobado_long = h1['adx'] >= 10 and h1['rsi'] > 20 and h1['rsi'] < 85
-    adx_aprobado_short = h1['adx'] >= 10 and h1['rsi'] > 15 and h1['rsi'] < 80
+    adx_aprobado_long = h1['adx'] >= 22 and h1['rsi'] > 20 and h1['rsi'] < 85
+    adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 15 and h1['rsi'] < 80
 
     # Estructura 4H
     h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA")
