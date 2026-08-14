@@ -226,10 +226,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN
-# ==========================================
-# ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (CON FILTRO 4H BLINDADO)
+# MÓDULO UNIFICADO CON CONTROL DE EXTENSIÓN 4H ESTRICTO (1.5 ATR) Y LÍMITE DE STOP LOSS
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
@@ -249,38 +246,45 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
     # ==========================================
-    # FILTRO 4H BLINDADO (Evita trampa de rebotes y techos)
+    # 1. FILTRO DE EXTENSIÓN EN 4H (Estricto a 1.5 ATR de la EMA)
     # ==========================================
+    distancia_4h_ema = abs(h4['precio'] - h4['ema20'])
+    max_extension_4h = h4['atr'] * 1.5  # Reducido a 1.5 para mantener el precio cerca de la media
+    h4_no_extendido = distancia_4h_ema <= max_extension_4h
+
     h4_alcista_real = (
         (h4['supertrend_estado'] == "🟢 ALCISTA") and 
         (h4['precio'] > h4['ema20']) and 
         (h4['rsi'] < 70) and
-        (h4['precio'] < h4['resistencia'] * 0.99) # Bloquea Long si está rozando la resistencia de 4H
+        (h4['precio'] < h4['resistencia'] * 0.99) and
+        h4_no_extendido 
     )
 
     h4_bajista_real = (
         (h4['supertrend_estado'] == "🔴 BAJISTA") and 
         (h4['precio'] < h4['ema20']) and 
-        (h4['rsi'] > 35) and # Bloquea Short si el RSI de 4H indica sobreventa inminente (< 35)
-        (h4['precio'] > h4['soporte'] * 1.01) # Bloquea Short si está tocando el soporte de 4H
+        (h4['rsi'] > 35) and 
+        (h4['precio'] > h4['soporte'] * 1.01) and
+        h4_no_extendido 
     )
 
     # GATILLOS HÍBRIDOS 1H 
     gatillo_1h_long = h1.get('supertrend_buy', False) or ((h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'])
     gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
-    # FILTRO DE FLUJO DE DINERO (MFI)
+    # FILTROS DE FLUJO Y EXTENSIÓN 1H
     filtro_mfi_long = h1['mfi'] > 40
     filtro_mfi_short = h1['mfi'] < 60
 
-    # FILTRO ANTI-PERSECUCIÓN 1H (Reducido a 1.5x ATR)
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
     max_extension_1h = h1['atr'] * 1.5 
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # Filtro simple de sobrecompra/sobreventa extrema en 1H
     filtro_rsi_no_extremo_long = h1['rsi'] < 85
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
+
+    # LÍMITE MÁXIMO DE STOP LOSS PERMITIDO (Máximo 3% de riesgo)
+    MAX_SL_PORCENTAJE = 3.0
 
     # ==========================================
     # GATILLOS FINALES 10X
@@ -299,28 +303,29 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        riesgo = precio_act - sl_final
-        tp1 = precio_act + (riesgo * 1.5)
-        tp2 = precio_act + (riesgo * 2.5)
-        tp3 = precio_act + (riesgo * 3.5)
+        if pct_sl <= MAX_SL_PORCENTAJE:
+            riesgo = precio_act - sl_final
+            tp1 = precio_act + (riesgo * 1.5)
+            tp2 = precio_act + (riesgo * 2.5)
+            tp3 = precio_act + (riesgo * 3.5)
 
-        ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
-        
-        if riesgo > 0 and ratio_actual >= 1.2: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    f"Alineación alcista estructural y filtro 4H seguro",
-                    f"SuperTrend 1H en impulso positivo",
-                    f"MFI confirma flujo de entrada de capital"
-                ]
-            })
+            ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
+            
+            if riesgo > 0 and ratio_actual >= 1.2: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        f"Alineación estructural con precio cerca de la media en 4H (max 1.5 ATR)",
+                        f"Control de riesgo estricto (SL menor al {MAX_SL_PORCENTAJE}%)",
+                        f"SuperTrend 1H y MFI favorables"
+                    ]
+                })
 
     gatillo_short_10x = (
         d1['es_bajista'] and 
@@ -336,28 +341,29 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
-        riesgo = sl_final - precio_act
-        tp1 = precio_act - (riesgo * 1.5)
-        tp2 = precio_act - (riesgo * 2.5)
-        tp3 = precio_act - (riesgo * 3.5)
-        
-        ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
+        if pct_sl <= MAX_SL_PORCENTAJE:
+            riesgo = sl_final - precio_act
+            tp1 = precio_act - (riesgo * 1.5)
+            tp2 = precio_act - (riesgo * 2.5)
+            tp3 = precio_act - (riesgo * 3.5)
+            
+            ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.2: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    f"Alineación bajista estructural y filtro 4H seguro",
-                    f"SuperTrend 1H en impulso negativo",
-                    f"MFI confirma salida de capital"
-                ]
-            })
+            if riesgo > 0 and ratio_actual >= 1.2: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        f"Alineación estructural con precio cerca de la media en 4H (max 1.5 ATR)",
+                        f"Control de riesgo estricto (SL menor al {MAX_SL_PORCENTAJE}%)",
+                        f"SuperTrend 1H y MFI favorables"
+                    ]
+                })
 
     return sniper_res
 # ==========================================
