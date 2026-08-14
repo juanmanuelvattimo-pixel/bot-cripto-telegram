@@ -229,137 +229,119 @@ def analizar_par_completo(symbol, timeframe):
 # MÓDULO UNIFICADO DE EVALUACIÓN
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
-    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
+    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
         return None
 
     d1 = analisis_tf['1d']
     h4 = analisis_tf['4h']
     h1 = analisis_tf['1h']
-    m15 = analisis_tf['15m']
     
     precio_act = h1['precio']
     atr_act = h1['atr']
     
     sniper_res = []
 
-    adx_aprobado_long = h1['adx'] >= 22 and h1['rsi'] > 20 and h1['rsi'] < 85
-    adx_aprobado_short = h1['adx'] >= 22 and h1['rsi'] > 15 and h1['rsi'] < 80
+    # ADX optimizado y rangos de RSI seguros
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
-    # Estructura 4H
-    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA")
-    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA")
+    # FILTRO 4H (SuperTrend, EMA y RSI sincronizado)
+    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20']) and (h4['rsi'] < 75)
+    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20']) and (h4['rsi'] > 25)
 
-    # Gatillos 1H 
-    quiebre_inicial_long = h1.get('supertrend_buy', False)
-    quiebre_inicial_short = h1.get('supertrend_sell', False)
-    continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10']
-    continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10']
+    # GATILLOS HÍBRIDOS 1H 
+    gatillo_1h_long = h1.get('supertrend_buy', False) or ((h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'])
+    gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
-    gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
-    gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
+    # FILTRO DE FLUJO DE DINERO (MFI) - Mantenemos MFI porque es más fiable que el Stoch
+    filtro_mfi_long = h1['mfi'] > 40
+    filtro_mfi_short = h1['mfi'] < 60
 
-    # Estocástico 1H FLEXIBLE (Solo cruce)
-    stoch_k_1h = h1.get('stoch_k', 50)
-    stoch_d_1h = h1.get('stoch_d', 50)
-    filtro_estocastico_long = stoch_k_1h > stoch_d_1h
-    filtro_estocastico_short = stoch_k_1h < stoch_d_1h
-
-    # Filtro Anti-Persecución 1H
+    # FILTRO ANTI-PERSECUCIÓN 1H (Reducido a 1.5x ATR)
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 1.5
+    max_extension_1h = h1['atr'] * 1.5 
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # Filtro 15M Suave
-    filtro_15m_long_suave = m15['precio'] > m15['ema10']
-    filtro_15m_short_suave = m15['precio'] < m15['ema10']
+    # NUEVO: Filtro simple de "Sobrecompra/Sobreventa Extrema" (Solo para evitar entrar cuando el mercado se dio vuelta)
+    filtro_rsi_no_extremo_long = h1['rsi'] < 85
+    filtro_rsi_no_extremo_short = h1['rsi'] > 15
 
-    emas_1h_alcistas = h1['ema10'] > h1['ema55']
-    emas_1h_bajistas = h1['ema10'] < h1['ema55']
-
-    # GATILLOS FINALES LONG
+    # GATILLOS FINALES 10X
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
-        emas_1h_alcistas and 
         adx_aprobado_long and
         gatillo_1h_long and  
-        filtro_estocastico_long and  
+        filtro_mfi_long and
         filtro_1h_no_extendido and
-        filtro_15m_long_suave
+        filtro_rsi_no_extremo_long            
     )
 
     if gatillo_long_10x:
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
-        riesgo = precio_act - sl_final
         
-        if riesgo > 0: 
-            tp1 = precio_act + (riesgo * 1.5)
-            tp2 = precio_act + (riesgo * 2.5)
-            tp3 = precio_act + (riesgo * 3.5)
-            
-            beneficio = tp1 - precio_act
-            ratio_actual = beneficio / riesgo
-            
-            # FILTRO DE RATIO R:R > 1.2 RESTAURADO
-            if ratio_actual > 1.2:
-                sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
-                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
-                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                    'supertrend': h1['supertrend_estado'],
-                    'rr': f"1:{ratio_actual:.2f}",
-                    'motivos': [
-                        "Alineación alcista en temporalidades mayores",
-                        "SuperTrend 1H en Estado ALCISTA (🟢)"
-                    ]
-                })
+        riesgo = precio_act - sl_final
+        tp1 = precio_act + (riesgo * 1.5)
+        tp2 = precio_act + (riesgo * 2.5)
+        tp3 = precio_act + (riesgo * 3.5)
 
-    # GATILLOS FINALES SHORT
+        ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
+        
+        if riesgo > 0 and ratio_actual >= 1.2: 
+            sniper_res.append({
+                'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                'supertrend': h1['supertrend_estado'],
+                'rr': f"1:{ratio_actual:.2f}",
+                'motivos': [
+                    f"Alineación alcista estructural confirmada",
+                    f"SuperTrend 1H en impulso positivo",
+                    f"MFI confirma flujo de entrada de capital"
+                ]
+            })
+
     gatillo_short_10x = (
         d1['es_bajista'] and 
         h4_bajista_real and  
-        emas_1h_bajistas and 
         adx_aprobado_short and
         gatillo_1h_short and 
-        filtro_estocastico_short and 
+        filtro_mfi_short and
         filtro_1h_no_extendido and
-        filtro_15m_short_suave
+        filtro_rsi_no_extremo_short            
     )
 
     if gatillo_short_10x:
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
-        riesgo = sl_final - precio_act
         
-        if riesgo > 0: 
-            tp1 = precio_act - (riesgo * 1.5)
-            tp2 = precio_act - (riesgo * 2.5)
-            tp3 = precio_act - (riesgo * 3.5)
-            
-            beneficio = precio_act - tp1
-            ratio_actual = beneficio / riesgo
-            
-            # FILTRO DE RATIO R:R > 1.2 RESTAURADO
-            if ratio_actual > 1.2:
-                sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
-                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                    'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                    'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
-                    'supertrend': h1['supertrend_estado'],
-                    'rr': f"1:{ratio_actual:.2f}",
-                    'motivos': [
-                        "Alineación bajista en temporalidades mayores",
-                        "SuperTrend 1H en Estado BAJISTA (🔴)"
-                    ]
-                })
+        riesgo = sl_final - precio_act
+        tp1 = precio_act - (riesgo * 1.5)
+        tp2 = precio_act - (riesgo * 2.5)
+        tp3 = precio_act - (riesgo * 3.5)
+        
+        ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
+
+        if riesgo > 0 and ratio_actual >= 1.2: 
+            sniper_res.append({
+                'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
+                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                'supertrend': h1['supertrend_estado'],
+                'rr': f"1:{ratio_actual:.2f}",
+                'motivos': [
+                    f"Alineación bajista estructural confirmada",
+                    f"SuperTrend 1H en impulso negativo",
+                    f"MFI confirma salida de capital"
+                ]
+            })
 
     return sniper_res
-
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
