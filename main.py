@@ -228,6 +228,9 @@ def analizar_par_completo(symbol, timeframe):
 # ==========================================
 # MÓDULO UNIFICADO DE EVALUACIÓN
 # ==========================================
+# ==========================================
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON FILTRO 4H BLINDADO)
+# ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
         return None
@@ -245,15 +248,28 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
     adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
-    # FILTRO 4H (SuperTrend, EMA y RSI sincronizado)
-    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20']) and (h4['rsi'] < 75)
-    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20']) and (h4['rsi'] > 25)
+    # ==========================================
+    # FILTRO 4H BLINDADO (Evita trampa de rebotes y techos)
+    # ==========================================
+    h4_alcista_real = (
+        (h4['supertrend_estado'] == "🟢 ALCISTA") and 
+        (h4['precio'] > h4['ema20']) and 
+        (h4['rsi'] < 70) and
+        (h4['precio'] < h4['resistencia'] * 0.99) # Bloquea Long si está rozando la resistencia de 4H
+    )
+
+    h4_bajista_real = (
+        (h4['supertrend_estado'] == "🔴 BAJISTA") and 
+        (h4['precio'] < h4['ema20']) and 
+        (h4['rsi'] > 35) and # Bloquea Short si el RSI de 4H indica sobreventa inminente (< 35)
+        (h4['precio'] > h4['soporte'] * 1.01) # Bloquea Short si está tocando el soporte de 4H
+    )
 
     # GATILLOS HÍBRIDOS 1H 
     gatillo_1h_long = h1.get('supertrend_buy', False) or ((h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'])
     gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
-    # FILTRO DE FLUJO DE DINERO (MFI) - Mantenemos MFI porque es más fiable que el Stoch
+    # FILTRO DE FLUJO DE DINERO (MFI)
     filtro_mfi_long = h1['mfi'] > 40
     filtro_mfi_short = h1['mfi'] < 60
 
@@ -262,11 +278,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     max_extension_1h = h1['atr'] * 1.5 
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # NUEVO: Filtro simple de "Sobrecompra/Sobreventa Extrema" (Solo para evitar entrar cuando el mercado se dio vuelta)
+    # Filtro simple de sobrecompra/sobreventa extrema en 1H
     filtro_rsi_no_extremo_long = h1['rsi'] < 85
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
 
+    # ==========================================
     # GATILLOS FINALES 10X
+    # ==========================================
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
@@ -298,7 +316,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación alcista estructural confirmada",
+                    f"Alineación alcista estructural y filtro 4H seguro",
                     f"SuperTrend 1H en impulso positivo",
                     f"MFI confirma flujo de entrada de capital"
                 ]
@@ -331,11 +349,11 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
                 'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación bajista estructural confirmada",
+                    f"Alineación bajista estructural y filtro 4H seguro",
                     f"SuperTrend 1H en impulso negativo",
                     f"MFI confirma salida de capital"
                 ]
