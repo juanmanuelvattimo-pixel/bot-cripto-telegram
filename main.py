@@ -305,9 +305,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         
         if pct_sl <= MAX_SL_PORCENTAJE:
             riesgo = precio_act - sl_final
-            tp1 = precio_act + (riesgo * 1.5)
-            tp2 = precio_act + (riesgo * 2.5)
-            tp3 = precio_act + (riesgo * 3.5)
+            tp1 = precio_act + (riesgo * 1.0)
+            tp2 = precio_act + (riesgo * 1.5)
+            tp3 = precio_act + (riesgo * 2.0)
 
             ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
             
