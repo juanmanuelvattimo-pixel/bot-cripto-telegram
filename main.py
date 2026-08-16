@@ -136,7 +136,7 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
-        # --- NUEVO: CÁLCULO DE MACD ---
+        # --- CÁLCULO DE MACD ---
         macd_ind = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
         df['macd'] = macd_ind.macd()
         df['macdsignal'] = macd_ind.macd_signal()
@@ -244,7 +244,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (CON CONFLUENCIA MACD + ESTOCÁSTICO)
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON CONFLUENCIA MACD 4H + ESTOCÁSTICO + SL MÁX 3%)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -266,6 +266,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20'])
     h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20'])
 
+    # [NUEVO] Filtro explícito de MACD en 4H para asegurar tendencia mayor y no operar en contra
+    filtro_tendencia_4h_long = h4['macd_hist'] > 0
+    filtro_tendencia_4h_short = h4['macd_hist'] < 0
+
     quiebre_inicial_long = h1.get('supertrend_buy', False)
     quiebre_inicial_short = h1.get('supertrend_sell', False)
 
@@ -280,11 +284,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     # ==========================================
     stoch_k_1h = h1.get('stoch_k', 50)
     
-    # LONG: Estocástico subiendo y NO en sobrecompra extrema (>85), o con apoyo del MACD histograma positivo/cruce
     filtro_osciladores_long = (stoch_k_1h < 85) and (h1['cruce_alcista'] or h1['macd_hist'] > 0)
-
-    # SHORT: Estocástico bajando y NO en sobreventa extrema (<15), o con apoyo del MACD histograma negativo/cruce
-    # -> EVITA VENDER EN EL PISO CUANDO ESTÁ QUERIENDO REBOTAR <-
     filtro_osciladores_short = (stoch_k_1h > 15) and (h1['cruce_bajista'] or h1['macd_hist'] < 0)
 
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
@@ -306,6 +306,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
+        filtro_tendencia_4h_long and # <--- FILTRO TENDENCIA MACD 4H
         emas_1h_alcistas and 
         adx_aprobado_long and
         gatillo_1h_long and  
@@ -318,7 +319,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        # [MODIFICACIÓN] Descartar si el Stop Loss supera el 3%
+        # [NUEVO] FILTRO DE STOP LOSS MÁXIMO 3%
         if pct_sl <= 3.0:
             riesgo = precio_act - sl_final
             tp1 = precio_act + (riesgo * 1.0)
@@ -338,15 +339,17 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'supertrend': h1['supertrend_estado'],
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
+                        f"Tendencia 4H confirmada por SuperTrend y MACD al alza",
                         f"Alineación alcista y precio cerca de EMA en 1H",
                         f"Confluencia de Estocástico/MACD favorable a la compra",
-                        f"15M sincronizado al alza"
+                        f"15M sincronizado al alza (SL: -{pct_sl:.2f}%)"
                     ]
                 })
 
     gatillo_short_10x = (
         d1['es_bajista'] and 
         h4_bajista_real and  
+        filtro_tendencia_4h_short and # <--- FILTRO TENDENCIA MACD 4H
         emas_1h_bajistas and 
         adx_aprobado_short and
         gatillo_1h_short and 
@@ -359,7 +362,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
-        # [MODIFICACIÓN] Descartar si el Stop Loss supera el 3%
+        # [NUEVO] FILTRO DE STOP LOSS MÁXIMO 3%
         if pct_sl <= 3.0:
             riesgo = sl_final - precio_act
             tp1 = precio_act - (riesgo * 1.5)
@@ -374,14 +377,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                    'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                    'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                     'supertrend': h1['supertrend_estado'],
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
+                        f"Tendencia 4H confirmada por SuperTrend y MACD a la baja",
                         f"Alineación bajista y control de extensión en 1H",
                         f"Osciladores confirmando impulso bajista (Sin rebote en suelo)",
-                        f"15M sincronizado a la baja"
+                        f"15M sincronizado a la baja (SL: -{pct_sl:.2f}%)"
                     ]
                 })
 
@@ -464,7 +468,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o el Stop Loss supera el 3%).\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o el SL supera el 3%).\n\n"
 
     enviar_telegram(msj)
 
@@ -507,7 +511,7 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper):
     if not entradas_sniper:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones (o el Stop Loss supera el 3%).")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones estrictas.")
         return
 
     if entradas_sniper:
@@ -650,7 +654,7 @@ if __name__ == "__main__":
             precio_btc = analisis_btc['1h']['precio']
             msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n\n"
-            msj_inicio += "📊 **Estado en Temporalidades (Bot Sniper 10X con MACD):**\n"
+            msj_inicio += "📊 **Estado en Temporalidades (Bot Sniper 10X con Filtros MACD 4H y SL Máx 3%):**\n"
             
             for tf in ['1h', '4h', '1d', '1w']:
                 if tf in analisis_btc:
@@ -668,7 +672,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado con cruces MACD en valles y filtro de Stop Loss máximo del 3% listo.")
+    logging.info("🚀 Bot actualizado con filtro de MACD en 4H y límite de SL en 3%.")
     
     analizar_mercado()
     
