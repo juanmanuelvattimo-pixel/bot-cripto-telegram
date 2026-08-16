@@ -319,9 +319,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
         riesgo = precio_act - sl_final
-        tp1 = precio_act + (riesgo * 1.5)
-        tp2 = precio_act + (riesgo * 2.5)
-        tp3 = precio_act + (riesgo * 3.5)
+        tp1 = precio_act + (riesgo * 1.0)
+        tp2 = precio_act + (riesgo * 1.5)
+        tp3 = precio_act + (riesgo * 2.0)
 
         beneficio = tp1 - precio_act
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
