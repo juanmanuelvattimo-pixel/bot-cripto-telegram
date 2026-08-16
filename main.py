@@ -295,7 +295,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_osciladores_short = h1['cruce_bajista'] or (stoch_k_1h < h1['stoch_d']) or (h1['macd_hist'] < 0)
 
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 3.0 # Ampliado para permitir más espacio
+    max_extension_1h = h1['atr'] * 1.5 # Ampliado para permitir más espacio
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
     # 15 MINUTOS SIMPLIFICADO
