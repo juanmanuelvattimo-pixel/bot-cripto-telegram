@@ -115,7 +115,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
+# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL (ACTUALIZADO CON MACD)
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
@@ -136,11 +136,11 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
-        # --- CÁLCULO DE MACD ---
-        macd_indicator = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
-        df['macd'] = macd_indicator.macd()
-        df['macd_signal'] = macd_indicator.macd_signal()
-        df['macd_diff'] = macd_indicator.macd_diff()  # Histograma
+        # --- NUEVO: CÁLCULO DE MACD ---
+        macd_ind = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
+        df['macd'] = macd_ind.macd()
+        df['macdsignal'] = macd_ind.macd_signal()
+        df['macdhist'] = macd_ind.macd_diff()
         
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
@@ -180,13 +180,18 @@ def analizar_par_completo(symbol, timeframe):
         stoch_k_prev = df['stoch_k'].iloc[-2]
         stoch_d_prev = df['stoch_d'].iloc[-2]
         
-        # MACD variables actuales y anteriores
+        # Cruces de Estocástico
+        cruce_alcista_estocastico = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
+        cruce_bajista_estocastico = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
+
+        # Cruces de MACD
         macd_val = df['macd'].iloc[-1]
-        macd_signal_val = df['macd_signal'].iloc[-1]
-        macd_val_prev = df['macd'].iloc[-2]
-        macd_signal_prev = df['macd_signal'].iloc[-2]
-        hist_val = df['macd_diff'].iloc[-1]
-        
+        macds_val = df['macdsignal'].iloc[-1]
+        macd_prev = df['macd'].iloc[-2]
+        macds_prev = df['macdsignal'].iloc[-2]
+        cruce_alcista_macd = (macd_prev <= macds_prev) and (macd_val > macds_val)
+        cruce_bajista_macd = (macd_prev >= macds_prev) and (macd_val < macds_val)
+
         adx = df['adx'].iloc[-1]
         plus_di = df['plus_di'].iloc[-1]
         minus_di = df['minus_di'].iloc[-1]
@@ -196,16 +201,6 @@ def analizar_par_completo(symbol, timeframe):
         
         supertrend_buy = (st_dir_prev == -1) and (st_dir == 1)
         supertrend_sell = (st_dir_prev == 1) and (st_dir == -1)
-        
-        cruce_alcista_estocastico = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
-        cruce_bajista_estocastico = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
-
-        # --- LÓGICA MACD PARA VALLES / MONTAÑAS ---
-        # Valle verde: Histograma positivo (hist_val > 0) y líneas a punto de cruzarse a la baja (MACD venía por arriba de la señal y se acerca o cruza)
-        macd_valle_verde_short = (hist_val > 0) and (macd_val_prev >= macd_signal_prev) and (macd_val <= macd_signal_val)
-        
-        # Valle rojo: Histograma negativo (hist_val < 0) y líneas a punto de cruzarse al alza (MACD venía por debajo de la señal y se acerca o cruza)
-        macd_valle_rojo_long = (hist_val < 0) and (macd_val_prev <= macd_signal_prev) and (macd_val >= macd_signal_val)
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
 
@@ -227,8 +222,9 @@ def analizar_par_completo(symbol, timeframe):
             'es_bajista': es_bajista_flexible,
             'cruce_alcista': cruce_alcista_estocastico,
             'cruce_bajista': cruce_bajista_estocastico,
-            'macd_valle_rojo_long': macd_valle_rojo_long,
-            'macd_valle_verde_short': macd_valle_verde_short,
+            'cruce_alcista_macd': cruce_alcista_macd,
+            'cruce_bajista_macd': cruce_bajista_macd,
+            'macd_hist': df['macdhist'].iloc[-1],
             'supertrend_buy': supertrend_buy,
             'supertrend_sell': supertrend_sell,
             'supertrend_estado': "🟢 ALCISTA" if st_dir == 1 else "🔴 BAJISTA",
@@ -248,7 +244,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (INTEGRADO CON FILTRO MACD)
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON CONFLUENCIA MACD + ESTOCÁSTICO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -264,50 +260,37 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    # ADX optimizado y rangos seguros (flexibilizados)
     adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
     adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
-    # ==========================================
-    # 1. FILTRO 4H (Estructura de SuperTrend)
-    # ==========================================
     h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20'])
     h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20'])
 
-    # ==========================================
-    # 2. GATILLOS HÍBRIDOS 1H + MACD VALLES
-    # ==========================================
     quiebre_inicial_long = h1.get('supertrend_buy', False)
     quiebre_inicial_short = h1.get('supertrend_sell', False)
 
     continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'] and (h1['ema10'] > h1['ema55'])
     continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'] and (h1['ema10'] < h1['ema55'])
 
-    # Incorporación explícita de la condición MACD solicitada en 1H:
-    # - Entrada LONG: Valle rojo a punto de cruzarse al alza.
-    # - Entrada SHORT: Valle verde a punto de cruzarse a la baja.
-    gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long or h1.get('macd_valle_rojo_long', False)
-    gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short or h1.get('macd_valle_verde_short', False)
+    gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
+    gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
 
     # ==========================================
-    # 3. FILTROS ESTOCÁSTICOS RELAJADOS
+    # FILTROS DE OSCILADORES BLINDADOS (ESTOCÁSTICO + MACD)
     # ==========================================
     stoch_k_1h = h1.get('stoch_k', 50)
-    stoch_d_1h = h1.get('stoch_d', 50)
+    
+    # LONG: Estocástico subiendo y NO en sobrecompra extrema (>85), o con apoyo del MACD histograma positivo/cruce
+    filtro_osciladores_long = (stoch_k_1h < 85) and (h1['cruce_alcista'] or h1['macd_hist'] > 0)
 
-    filtro_estocastico_long = (stoch_k_1h < 55) and (stoch_k_1h > stoch_d_1h)
-    filtro_estocastico_short = (stoch_k_1h > 45) and (stoch_k_1h < stoch_d_1h)
+    # SHORT: Estocástico bajando y NO en sobreventa extrema (<15), o con apoyo del MACD histograma negativo/cruce
+    # -> EVITA VENDER EN EL PISO CUANDO ESTÁ QUERIENDO REBOTAR <-
+    filtro_osciladores_short = (stoch_k_1h > 15) and (h1['cruce_bajista'] or h1['macd_hist'] < 0)
 
-    # ==========================================
-    # 4. FILTRO ANTI-PERSECUCIÓN 1H
-    # ==========================================
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
     max_extension_1h = h1['atr'] * 2.2
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # ==========================================
-    # 5. FILTRO 15M (Sincronizado y con margen ampliado)
-    # ==========================================
     distancia_15m = abs(m15['precio'] - m15['ema10'])
     exhaustion_limit = m15['atr'] * 2.5 
 
@@ -320,16 +303,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     emas_1h_alcistas = h1['ema10'] > h1['ema55']
     emas_1h_bajistas = h1['ema10'] < h1['ema55']
 
-    # ==========================================
-    # 6. GATILLOS FINALES 10X
-    # ==========================================
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
         emas_1h_alcistas and 
         adx_aprobado_long and
         gatillo_1h_long and  
-        filtro_estocastico_long and  
+        filtro_osciladores_long and  
         filtro_1h_no_extendido and
         filtro_15m_long_sano             
     )
@@ -347,7 +327,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
         
         if riesgo > 0 and ratio_actual >= 1.5: 
-            motivo_extra = "MACD en Valle Rojo cruzando al alza 🟢" if h1.get('macd_valle_rojo_long') else "Alineación alcista y precio cerca de la EMA en 1H"
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -357,9 +336,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"{motivo_extra}",
-                    f"SuperTrend 1H en Estado ALCISTA (🟢)",
-                    f"15M sincronizado y estocástico cruzando al alza"
+                    f"Alineación alcista y precio cerca de EMA en 1H",
+                    f"Confluencia de Estocástico/MACD favorable a la compra",
+                    f"15M sincronizado al alza"
                 ]
             })
 
@@ -369,7 +348,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         emas_1h_bajistas and 
         adx_aprobado_short and
         gatillo_1h_short and 
-        filtro_estocastico_short and 
+        filtro_osciladores_short and 
         filtro_1h_no_extendido and
         filtro_15m_short_sano            
     )
@@ -387,19 +366,18 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
         if riesgo > 0 and ratio_actual >= 1.5: 
-            motivo_extra = "MACD en Valle Verde cruzando a la baja 🔴" if h1.get('macd_valle_verde_short') else "Alineación bajista y precio controlado sin sobre-extensión en 1H"
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
                 'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
                 'supertrend': h1['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"{motivo_extra}",
-                    f"SuperTrend 1H en Estado BAJISTA (🔴)",
-                    f"15M sincronizado y estocástico cruzando a la baja"
+                    f"Alineación bajista y control de extensión en 1H",
+                    f"Osciladores confirmando impulso bajista (Sin rebote en suelo)",
+                    f"15M sincronizado a la baja"
                 ]
             })
 
