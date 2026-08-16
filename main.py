@@ -115,7 +115,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
+# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL CON STOCHRSI
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
@@ -136,6 +136,16 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
+        # --- CÁLCULO DE STOCHRSI (Reemplaza al Estocástico clásico) ---
+        rsi_min = df['rsi'].rolling(window=14).min()
+        rsi_max = df['rsi'].rolling(window=14).max()
+        # Evitar división por cero si el RSI está plano
+        denominador = rsi_max - rsi_min
+        denominador = denominador.replace(0, 0.0001)
+        
+        df['stochrsi_k'] = ((df['rsi'] - rsi_min) / denominador) * 100
+        df['stochrsi_d'] = df['stochrsi_k'].rolling(window=3).mean()
+
         # --- CÁLCULO DE MACD ---
         macd_ind = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
         df['macd'] = macd_ind.macd()
@@ -166,19 +176,14 @@ def analizar_par_completo(symbol, timeframe):
             else:
                 df.loc[df.index[i], 'supertrend_direction'] = df['supertrend_direction'].iloc[i-1]
 
-        low_min = df['low'].rolling(window=14).min()
-        high_max = df['high'].rolling(window=14).max()
-        df['stoch_k'] = ((df['close'] - low_min) / (high_max - low_min)) * 100
-        df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
-
         e10, e20, e55 = df['ema10'].iloc[-1], df['ema20'].iloc[-1], df['ema55'].iloc[-1]
         st_dir = df['supertrend_direction'].iloc[-1]
         st_dir_prev = df['supertrend_direction'].iloc[-2]
         
-        stoch_k = df['stoch_k'].iloc[-1]
-        stoch_d = df['stoch_d'].iloc[-1]
-        stoch_k_prev = df['stoch_k'].iloc[-2]
-        stoch_d_prev = df['stoch_d'].iloc[-2]
+        stoch_k = df['stochrsi_k'].iloc[-1]
+        stoch_d = df['stochrsi_d'].iloc[-1]
+        stoch_k_prev = df['stochrsi_k'].iloc[-2]
+        stoch_d_prev = df['stochrsi_d'].iloc[-2]
         
         cruce_alcista_estocastico = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
         cruce_bajista_estocastico = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
@@ -243,7 +248,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (15M SIMPLIFICADO: SOLO PUNTO 1)
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON STOCHRSI FILTRADO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
@@ -270,8 +275,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     stoch_k_4h = h4.get('stoch_k', 50)
     stoch_d_4h = h4.get('stoch_d', 50)
+    # Filtro StochRSI 4H (Evita extremos de sobreventa/sobrecompra)
     filtro_osciladores_4h_long = (stoch_k_4h < 85) and (stoch_k_4h > stoch_d_4h)
-    filtro_osciladores_4h_short = (stoch_k_4h > 15) and (stoch_k_4h < stoch_d_4h)
+    filtro_osciladores_4h_short = (stoch_k_4h > 20) and (stoch_k_4h < stoch_d_4h)
 
     quiebre_inicial_long = h1.get('supertrend_buy', False)
     quiebre_inicial_short = h1.get('supertrend_sell', False)
@@ -284,16 +290,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     stoch_k_1h = h1.get('stoch_k', 50)
     
-    filtro_osciladores_long = (stoch_k_1h < 85) and (h1['cruce_alcista'] or h1['macd_hist'] > 0)
-    filtro_osciladores_short = (stoch_k_1h > 15) and (h1['cruce_bajista'] or h1['macd_hist'] < 0)
+    # Filtro StochRSI 1H (EXIGE que StochRSI esté por encima de 20 para Shorts, evitando vender en suelos como en la imagen)
+    filtro_osciladores_long = (stoch_k_1h < 85) and (stoch_k_1h > 15) and (h1['cruce_alcista'] or h1['macd_hist'] > 0)
+    filtro_osciladores_short = (stoch_k_1h > 20) and (stoch_k_1h < 85) and (h1['cruce_bajista'] or h1['macd_hist'] < 0)
 
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
     max_extension_1h = h1['atr'] * 2.2
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # ==========================================
-    # 15 MINUTOS SIMPLIFICADO (Puntos 2 y 3 eliminados)
-    # ==========================================
+    # 15 MINUTOS SIMPLIFICADO
     filtro_15m_long_sano = m15['cierra_arriba_ema10']
     filtro_15m_short_sano = m15['cierra_abajo_ema10']
 
@@ -336,10 +341,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'supertrend': h1['supertrend_estado'],
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
-                        f"Tendencia 4H confirmada por SuperTrend, MACD y Estocástico al alza",
+                        f"Tendencia 4H confirmada por SuperTrend, MACD y StochRSI al alza",
                         f"Alineación alcista y precio cerca de EMA en 1H",
-                        f"Confluencia de Estocástico/MACD favorable a la compra",
-                        f"15M con cierre alcista sobre EMA 10 (SL: -{pct_sl:.2f}%)"
+                        f"StochRSI de 1H fuera de zonas extremas y favorable",
+                        f"15M con cierre alcista sobre EMA 10"
                     ]
                 })
 
@@ -379,10 +384,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'supertrend': h1['supertrend_estado'],
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
-                        f"Tendencia 4H confirmada por SuperTrend, MACD y Estocástico a la baja",
+                        f"Tendencia 4H confirmada por SuperTrend, MACD y StochRSI a la baja",
                         f"Alineación bajista y control de extensión en 1H",
-                        f"Osciladores confirmando impulso bajista (Sin rebote en suelo)",
-                        f"15M con cierre bajista bajo EMA 10 (SL: -{pct_sl:.2f}%)"
+                        f"StochRSI 1H > 20",
+                        f"15M con cierre bajista bajo EMA 10"
                     ]
                 })
 
@@ -417,7 +422,7 @@ def analizar_cripto_individual(ticker_raw):
     simbolo_limpio = ticker.split('/')[0]
     
     temporalidades = ['15m', '1h', '4h', '1d', '1w']
-    msj = f"🤖 **BOT ACTIVO ✅**\n\n📊 *ANÁLISIS TÉCNICO DETALLADO: ${simbolo_limpio}*\n\n"
+    msj = f"🤖 **BOT ACTIVO ✅**\n\n📊 *ANÁLISIS TÉCNICO STOCHRSI: ${simbolo_limpio}*\n\n"
     
     for tf in temporalidades:
         res = analizar_par_completo(ticker, tf)
@@ -425,9 +430,8 @@ def analizar_cripto_individual(ticker_raw):
             msj += f"• *Temporalidad {tf.upper()}*:\n"
             msj += f"  - Precio: `{fmt_precio(res['precio'])}`\n"
             msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
-            msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
-            msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
-            msj += f"  - Soporte: `{fmt_precio(res['soporte'])}` | Resistencia: `{fmt_precio(res['resistencia'])}`\n\n"
+            msj += f"  - StochRSI K: `{res['stoch_k']:.1f}` | D: `{res['stoch_d']:.1f}`\n"
+            msj += f"  - RSI: `{res['rsi']:.1f}` | MACD Hist: `{res['macd_hist']:.5f}`\n\n"
         else:
             msj += f"• *Temporalidad {tf.upper()}*: Sin datos suficientes.\n\n"
             
@@ -449,7 +453,7 @@ def evaluar_trade_manual(ticker_raw):
 
     sniper = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
     
-    msj = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN MANUAL DE TRADE: ${simbolo_limpio}*\n\n"
+    msj = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN MANUAL STOCHRSI: ${simbolo_limpio}*\n\n"
 
     if sniper:
         for op in sniper:
@@ -465,7 +469,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o el SL supera el 3%).\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas de StochRSI actuales (o el SL supera el 3%).\n\n"
 
     enviar_telegram(msj)
 
@@ -485,7 +489,7 @@ def procesar_par_paralelo(par):
     return sniper
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando mercado con filtros StochRSI...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -508,11 +512,11 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper):
     if not entradas_sniper:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones estrictas.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nNinguna criptomoneda cumple con las reglas de StochRSI estrictas.")
         return
 
     if entradas_sniper:
-        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
+        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS STOCHRSI DETECTADAS:* ⚡\n\n"
         for op in entradas_sniper[:5]:
             msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
@@ -556,7 +560,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Realizando análisis exhaustivo para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Analizando StochRSI para `${ticker.upper()}`...")
                             analizar_cripto_individual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/analizar BTC`")
@@ -565,7 +569,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia Sniper para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia StochRSI para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
@@ -594,7 +598,7 @@ def analizar_mercado():
     except Exception:
         pass
 
-    logging.info("🔎 Escaneo automático de mercado iniciado...")
+    logging.info("🔎 Escaneo automático de mercado con StochRSI iniciado...")
     
     try:
         pares_filtrados = obtener_pares_top()
@@ -649,27 +653,26 @@ if __name__ == "__main__":
                 
         if '1h' in analisis_btc:
             precio_btc = analisis_btc['1h']['precio']
-            msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
+            msj_inicio = f"🤖 **BOT ACTIVO (StochRSI Mode) ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n\n"
-            msj_inicio += "📊 **Estado en Temporalidades (15M Simplificado & SL Máx 3%):**\n"
+            msj_inicio += "📊 **Estado en Temporalidades:**\n"
             
             for tf in ['1h', '4h', '1d', '1w']:
                 if tf in analisis_btc:
                     data = analisis_btc[tf]
                     tendencia = data['supertrend_estado']
-                    rsi_val = data['rsi']
-                    adx_val = data['adx']
-                    fuerza_adx = data['adx_fuerza']
+                    st_k = data['stoch_k']
+                    st_d = data['stoch_d']
                     
-                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | RSI: `{rsi_val:.1f}` | ADX: `{adx_val:.1f}` ({fuerza_adx})\n"
+                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | StochRSI K: `{st_k:.1f}` | D: `{st_d:.1f}`\n"
             
             enviar_telegram(msj_inicio)
         else:
-            enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente, pero no se pudo obtener el análisis preliminar de BTC.")
+            enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente.")
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado: 15M simplificado (sin puntos 2 y 3).")
+    logging.info("🚀 Bot actualizado con StochRSI en 1H y 4H.")
     
     analizar_mercado()
     
