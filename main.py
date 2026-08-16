@@ -318,29 +318,31 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        riesgo = precio_act - sl_final
-        tp1 = precio_act + (riesgo * 1.0)
-        tp2 = precio_act + (riesgo * 1.5)
-        tp3 = precio_act + (riesgo * 2.0)
+        # [MODIFICACIÓN] Descartar si el Stop Loss supera el 3%
+        if pct_sl <= 3.0:
+            riesgo = precio_act - sl_final
+            tp1 = precio_act + (riesgo * 1.0)
+            tp2 = precio_act + (riesgo * 1.5)
+            tp3 = precio_act + (riesgo * 2.0)
 
-        beneficio = tp1 - precio_act
-        ratio_actual = beneficio / riesgo if riesgo > 0 else 0
-        
-        if riesgo > 0 and ratio_actual >= 1.5: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    f"Alineación alcista y precio cerca de EMA en 1H",
-                    f"Confluencia de Estocástico/MACD favorable a la compra",
-                    f"15M sincronizado al alza"
-                ]
-            })
+            beneficio = tp1 - precio_act
+            ratio_actual = beneficio / riesgo if riesgo > 0 else 0
+            
+            if riesgo > 0 and ratio_actual >= 1.5: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        f"Alineación alcista y precio cerca de EMA en 1H",
+                        f"Confluencia de Estocástico/MACD favorable a la compra",
+                        f"15M sincronizado al alza"
+                    ]
+                })
 
     gatillo_short_10x = (
         d1['es_bajista'] and 
@@ -357,29 +359,31 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
-        riesgo = sl_final - precio_act
-        tp1 = precio_act - (riesgo * 1.5)
-        tp2 = precio_act - (riesgo * 2.5)
-        tp3 = precio_act - (riesgo * 3.5)
-        
-        beneficio = precio_act - tp1
-        ratio_actual = beneficio / riesgo if riesgo > 0 else 0
+        # [MODIFICACIÓN] Descartar si el Stop Loss supera el 3%
+        if pct_sl <= 3.0:
+            riesgo = sl_final - precio_act
+            tp1 = precio_act - (riesgo * 1.5)
+            tp2 = precio_act - (riesgo * 2.5)
+            tp3 = precio_act - (riesgo * 3.5)
+            
+            beneficio = precio_act - tp1
+            ratio_actual = beneficio / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.5: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    f"Alineación bajista y control de extensión en 1H",
-                    f"Osciladores confirmando impulso bajista (Sin rebote en suelo)",
-                    f"15M sincronizado a la baja"
-                ]
-            })
+            if riesgo > 0 and ratio_actual >= 1.5: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        f"Alineación bajista y control de extensión en 1H",
+                        f"Osciladores confirmando impulso bajista (Sin rebote en suelo)",
+                        f"15M sincronizado a la baja"
+                    ]
+                })
 
     return sniper_res
 
@@ -460,7 +464,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales.\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o el Stop Loss supera el 3%).\n\n"
 
     enviar_telegram(msj)
 
@@ -503,7 +507,7 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper):
     if not entradas_sniper:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones (o el Stop Loss supera el 3%).")
         return
 
     if entradas_sniper:
@@ -664,7 +668,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado con cruces MACD en valles y listo.")
+    logging.info("🚀 Bot actualizado con cruces MACD en valles y filtro de Stop Loss máximo del 3% listo.")
     
     analizar_mercado()
     
