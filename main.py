@@ -275,8 +275,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
     # NUEVO: FILTRO STOCHRSI EN 1H ("EN EL PISO" PARA LONG < 20, "EN LAS NUBES" PARA SHORT > 80)
-    stochrsi_en_piso_long = h1['stoch_k'] <= 30
-    stochrsi_en_nubes_short = h1['stoch_k'] >= 70
+    stochrsi_en_piso_long = h1['stoch_k'] <= 60
+    stochrsi_en_nubes_short = h1['stoch_k'] >= 50
 
     # FILTROS DE FLUJO Y EXTENSIÓN 1H
     filtro_mfi_long = h1['mfi'] > 40
@@ -318,7 +318,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
             ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
             
-            if riesgo > 0 and ratio_actual >= 1.2: 
+            if riesgo > 0 and ratio_actual >= 1.0: 
                 sniper_res.append({
                     'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
@@ -357,7 +357,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             
             ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
-            if riesgo > 0 and ratio_actual >= 1.2: 
+            if riesgo > 0 and ratio_actual >= 1.0: 
                 sniper_res.append({
                     'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
