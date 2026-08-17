@@ -275,8 +275,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
     # NUEVO: FILTRO STOCHRSI EN 1H ("EN EL PISO" PARA LONG < 20, "EN LAS NUBES" PARA SHORT > 80)
-    stochrsi_en_piso_long = h1['stoch_k'] <= 20
-    stochrsi_en_nubes_short = h1['stoch_k'] >= 80
+    stochrsi_en_piso_long = h1['stoch_k'] <= 30
+    stochrsi_en_nubes_short = h1['stoch_k'] >= 70
 
     # FILTROS DE FLUJO Y EXTENSIÓN 1H
     filtro_mfi_long = h1['mfi'] > 40
@@ -290,7 +290,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
 
     # LÍMITE MÁXIMO DE STOP LOSS PERMITIDO (Máximo 3% de riesgo)
-    MAX_SL_PORCENTAJE = 3.0
+    MAX_SL_PORCENTAJE = 7.0
 
     # ==========================================
     # GATILLOS FINALES 10X (CON STOCHRSI INTEGRADO)
@@ -312,9 +312,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         
         if pct_sl <= MAX_SL_PORCENTAJE:
             riesgo = precio_act - sl_final
-            tp1 = precio_act + (riesgo * 1.5)
-            tp2 = precio_act + (riesgo * 2.5)
-            tp3 = precio_act + (riesgo * 3.5)
+            tp1 = precio_act + (riesgo * 1.0)
+            tp2 = precio_act + (riesgo * 1.5)
+            tp3 = precio_act + (riesgo * 2.0)
 
             ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
             
@@ -329,8 +329,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
                         f"Alineación estructural con precio cerca de la media en 4H (max 1.5 ATR)",
-                        f"StochRSI en el piso en 1H (K: {h1['stoch_k']:.1f} <= 20)",
-                        f"Control de riesgo estricto (SL menor al {MAX_SL_PORCENTAJE}%)",
+                        f"StochRSI en el piso en 1H (K: {h1['stoch_k']:.1f} <= 20)"
                         f"SuperTrend 1H y MFI favorables"
                     ]
                 })
@@ -352,9 +351,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         
         if pct_sl <= MAX_SL_PORCENTAJE:
             riesgo = sl_final - precio_act
-            tp1 = precio_act - (riesgo * 1.5)
-            tp2 = precio_act - (riesgo * 2.5)
-            tp3 = precio_act - (riesgo * 3.5)
+            tp1 = precio_act - (riesgo * 1.0)
+            tp2 = precio_act - (riesgo * 1.5)
+            tp3 = precio_act - (riesgo * 2.0)
             
             ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
@@ -370,7 +369,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'motivos': [
                         f"Alineación estructural con precio cerca de la media en 4H (max 1.5 ATR)",
                         f"StochRSI en las nubes en 1H (K: {h1['stoch_k']:.1f} >= 80)",
-                        f"Control de riesgo estricto (SL menor al {MAX_SL_PORCENTAJE}%)",
                         f"SuperTrend 1H y MFI favorables"
                     ]
                 })
