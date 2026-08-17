@@ -203,39 +203,39 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN OPTIMIZADO
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON GATILLO 15M Y SL AJUSTADO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
-    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
+    if '15m' not in analisis_tf or '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
         return None
 
     d1 = analisis_tf['1d']
     h4 = analisis_tf['4h']
     h1 = analisis_tf['1h']
+    m15 = analisis_tf['15m']
     
-    precio_act = h1['precio']
-    atr_act = h1['atr']
+    precio_act = m15['precio']  # Precio de entrada exacto en 15m
+    atr_act = m15['atr']        # ATR ajustado de 15m para un SL milimétrico
     
     sniper_res = []
 
-    # 1. FILTRO DE TENDENCIA DIARIA (LA LEY SUPREMA)
+    # 1. TENDENCIA MACRO (DIARIO Y 4H)
     macro_alcista = d1['es_alcista'] and (d1['supertrend_estado'] == "🟢 ALCISTA")
     macro_bajista = d1['es_bajista'] and (d1['supertrend_estado'] == "🔴 BAJISTA")
 
-    # 2. FILTRO DE ESTRUCTURA 4H (CONFIRMACIÓN DE IMPULSO)
     h4_alcista = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20'])
     h4_bajista = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20'])
 
-    # 3. FILTRO DE ADX EN 1H (EVITA FALSOS RUIDOS EN RANGOS)
-    adx_valido = h1['adx'] >= 18
-    
-    # Filtro de RSI sano
-    rsi_long_valido = 35 < h1['rsi'] < 75
-    rsi_short_valido = 25 < h1['rsi'] < 65
+    # 2. CONTEXTO 1H (VALIDACIÓN DE IMPULSO INTERMEDIO)
+    h1_alcista = h1['supertrend_estado'] == "🟢 ALCISTA" and h1['adx'] >= 16
+    h1_bajista = h1['supertrend_estado'] == "🔴 BAJISTA" and h1['adx'] >= 16
 
-    # 4. GATILLOS DE ENTRADA 1H
-    gatillo_1h_long = h1.get('supertrend_buy', False) or (h1['supertrend_estado'] == "🟢 ALCISTA" and h1['cierra_arriba_ema10'])
-    gatillo_1h_short = h1.get('supertrend_sell', False) or (h1['supertrend_estado'] == "🔴 BAJISTA" and h1['cierra_abajo_ema10'])
+    # 3. GATILLO DE PRECISIÓN EN 15M (EL PUNTO EXACTO DE ENTRADA)
+    gatillo_15m_long = m15.get('supertrend_buy', False) or (m15['supertrend_estado'] == "🟢 ALCISTA" and m15['cierra_arriba_ema10'])
+    gatillo_15m_short = m15.get('supertrend_sell', False) or (m15['supertrend_estado'] == "🔴 BAJISTA" and m15['cierra_abajo_ema10'])
+
+    rsi_long_valido = 35 < m15['rsi'] < 75
+    rsi_short_valido = 25 < m15['rsi'] < 65
 
     # ==========================================
     # EVALUACIÓN DE COMPRA (LONG)
@@ -243,13 +243,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_long_10x = (
         macro_alcista and 
         h4_alcista and  
-        adx_valido and
+        h1_alcista and
         rsi_long_valido and
-        gatillo_1h_long          
+        gatillo_15m_long          
     )
 
     if gatillo_long_10x:
-        sl_final = h1['soporte'] - (1.0 * atr_act)
+        # Stop Loss ultra ceñido basado en el soporte de 15m + 1 ATR de 15m
+        sl_final = m15['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
         riesgo = precio_act - sl_final
@@ -259,19 +260,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
         ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
         
-        if riesgo > 0 and ratio_actual >= 1.8: 
+        if riesgo > 0 and ratio_actual >= 1.8 and pct_sl <= 6.0:  # Validamos que el SL no supere el 6%
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
                 'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
+                'supertrend': m15['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación perfecta Diario + 4H alcista",
-                    f"ADX 1H con fuerza de tendencia ({h1['adx']:.1f})",
-                    f"Gatillo activo en SuperTrend/EMA10 1H"
+                    f"Alineación Macro (Diario + 4H + 1H)",
+                    f"Gatillo de entrada perfecto en 15M",
+                    f"Stop Loss optimizado y ceñido ({pct_sl:.2f}%)"
                 ]
             })
 
@@ -281,13 +282,14 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_short_10x = (
         macro_bajista and 
         h4_bajista and  
-        adx_valido and
+        h1_bajista and
         rsi_short_valido and
-        gatillo_1h_short            
+        gatillo_15m_short            
     )
 
     if gatillo_short_10x:
-        sl_final = h1['resistencia'] + (1.0 * atr_act)
+        # Stop Loss ultra ceñido basado en la resistencia de 15m + 1 ATR de 15m
+        sl_final = m15['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
         riesgo = sl_final - precio_act
@@ -297,19 +299,19 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         
         ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.8: 
+        if riesgo > 0 and ratio_actual >= 1.8 and pct_sl <= 6.0:  # Validamos que el SL no supere el 6%
             sniper_res.append({
                 'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
                 'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                 'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
                 'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
                 'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
+                'supertrend': m15['supertrend_estado'],
                 'rr': f"1:{ratio_actual:.2f}",
                 'motivos': [
-                    f"Alineación perfecta Diario + 4H bajista",
-                    f"ADX 1H con fuerza de tendencia ({h1['adx']:.1f})",
-                    f"Gatillo activo en SuperTrend/EMA10 1H"
+                    f"Alineación Macro (Diario + 4H + 1H)",
+                    f"Gatillo de entrada perfecto en 15M",
+                    f"Stop Loss optimizado y ceñido ({pct_sl:.2f}%)"
                 ]
             })
 
@@ -392,7 +394,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o R:R menor a 1.8).\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o R:R menor a 1.8 / SL mayor al 6%).\n\n"
 
     enviar_telegram(msj)
 
@@ -412,7 +414,7 @@ def procesar_par_paralelo(par):
     return sniper
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper (Gatillo 15m)...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -435,11 +437,11 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper):
     if not entradas_sniper:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nEn este momento ninguna criptomoneda cumple con las condiciones en 15m.")
         return
 
     if entradas_sniper:
-        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
+        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X (GATILLO 15M) DETECTADAS:* ⚡\n\n"
         for op in entradas_sniper[:5]:
             msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
@@ -492,7 +494,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia Sniper para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia Sniper 15m para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
@@ -578,9 +580,9 @@ if __name__ == "__main__":
             precio_btc = analisis_btc['1h']['precio']
             msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n\n"
-            msj_inicio += "📊 **Estado en Temporalidades (Bot Sniper 10X):**\n"
+            msj_inicio += "📊 **Estado en Temporalidades (Bot Sniper con Gatillo 15M):**\n"
             
-            for tf in ['1h', '4h', '1d', '1w']:
+            for tf in ['15m', '1h', '4h', '1d']:
                 if tf in analisis_btc:
                     data = analisis_btc[tf]
                     tendencia = data['supertrend_estado']
@@ -596,7 +598,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado, concurrente y listo.")
+    logging.info("🚀 Bot actualizado con gatillo de 15 minutos y concurrente.")
     
     analizar_mercado()
     
