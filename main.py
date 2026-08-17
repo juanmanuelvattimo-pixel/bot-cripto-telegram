@@ -115,7 +115,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL CON STOCHRSI
+# 4. MOTOR DE ANÁLISIS TÉCNICO (15M, 1H, 4H, 1D)
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
@@ -130,41 +130,29 @@ def analizar_par_completo(symbol, timeframe):
         precio = df['close'].iloc[-1]
 
         df['ema10'] = ta.trend.ema_indicator(df['close'], window=10)
-        df['ema20'] = ta.trend.ema_indicator(df['close'], window=20)
-        df['ema55'] = ta.trend.ema_indicator(df['close'], window=55)
-        
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-        df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
-        # --- CÁLCULO DE STOCHRSI ---
+        # --- STOCHRSI ---
         rsi_min = df['rsi'].rolling(window=14).min()
         rsi_max = df['rsi'].rolling(window=14).max()
-        denominador = rsi_max - rsi_min
-        denominador = denominador.replace(0, 0.0001)
+        denominador = (rsi_max - rsi_min).replace(0, 0.0001)
         
         df['stochrsi_k'] = ((df['rsi'] - rsi_min) / denominador) * 100
         df['stochrsi_d'] = df['stochrsi_k'].rolling(window=3).mean()
 
-        # --- CÁLCULO DE MACD ---
+        # --- MACD ---
         macd_ind = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
-        df['macd'] = macd_ind.macd()
-        df['macdsignal'] = macd_ind.macd_signal()
         df['macdhist'] = macd_ind.macd_diff()
         
-        indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
-        df['bb_upper'] = indicator_bb.bollinger_hband()
-        df['bb_lower'] = indicator_bb.bollinger_lband()
-        
+        # --- ADX ---
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
         df['adx'] = adx_ind.adx()
-        df['plus_di'] = adx_ind.adx_pos()
-        df['minus_di'] = adx_ind.adx_neg()
-        
+
+        # --- SUPERTREND ---
         df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
-        multiplicador = 2.0
         hl2 = (df['high'] + df['low']) / 2
-        df['up_basic'] = hl2 - (multiplicador * df['atr'])
-        df['dn_basic'] = hl2 + (multiplicador * df['atr'])
+        df['up_basic'] = hl2 - (2.0 * df['atr'])
+        df['dn_basic'] = hl2 + (2.0 * df['atr'])
         
         df['supertrend_direction'] = 1
         for i in range(1, n_velas):
@@ -175,82 +163,44 @@ def analizar_par_completo(symbol, timeframe):
             else:
                 df.loc[df.index[i], 'supertrend_direction'] = df['supertrend_direction'].iloc[i-1]
 
-        e10, e20, e55 = df['ema10'].iloc[-1], df['ema20'].iloc[-1], df['ema55'].iloc[-1]
         st_dir = df['supertrend_direction'].iloc[-1]
-        st_dir_prev = df['supertrend_direction'].iloc[-2]
         
         stoch_k = df['stochrsi_k'].iloc[-1]
         stoch_d = df['stochrsi_d'].iloc[-1]
         stoch_k_prev = df['stochrsi_k'].iloc[-2]
         stoch_d_prev = df['stochrsi_d'].iloc[-2]
         
-        cruce_alcista_estocastico = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
-        cruce_bajista_estocastico = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
-
-        macd_val = df['macd'].iloc[-1]
-        macds_val = df['macdsignal'].iloc[-1]
-        macd_prev = df['macd'].iloc[-2]
-        macds_prev = df['macdsignal'].iloc[-2]
-        cruce_alcista_macd = (macd_prev <= macds_prev) and (macd_val > macds_val)
-        cruce_bajista_macd = (macd_prev >= macds_prev) and (macd_val < macds_val)
-
-        adx = df['adx'].iloc[-1]
-        plus_di = df['plus_di'].iloc[-1]
-        minus_di = df['minus_di'].iloc[-1]
-        rsi = df['rsi'].iloc[-1]
-        mfi = df['mfi'].iloc[-1]
-        atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
-        
-        supertrend_buy = (st_dir_prev == -1) and (st_dir == 1)
-        supertrend_sell = (st_dir_prev == 1) and (st_dir == -1)
+        cruce_alcista = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
+        cruce_bajista = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
-
-        es_alcista_flexible = (precio > e55) and (st_dir == 1)
-        es_bajista_flexible = (precio < e55) and (st_dir == -1)
-
-        adx_direccion = "ALCISTA 🟢" if plus_di > minus_di else "BAJISTA 🔴"
-        adx_fuerza = "Fuerte 💪" if adx >= 26 else "Débil / Rango 😴"
+        atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
 
         return {
             'precio': precio,
             'atr': atr,
-            'rsi': rsi,
-            'mfi': mfi,
-            'adx': adx,
-            'adx_direccion': adx_direccion,
-            'adx_fuerza': adx_fuerza,
-            'es_alcista': es_alcista_flexible,
-            'es_bajista': es_bajista_flexible,
-            'cruce_alcista': cruce_alcista_estocastico,
-            'cruce_bajista': cruce_bajista_estocastico,
-            'cruce_alcista_macd': cruce_alcista_macd,
-            'cruce_bajista_macd': cruce_bajista_macd,
-            'macd_hist': df['macdhist'].iloc[-1],
-            'supertrend_buy': supertrend_buy,
-            'supertrend_sell': supertrend_sell,
+            'st_dir': st_dir,
             'supertrend_estado': "🟢 ALCISTA" if st_dir == 1 else "🔴 BAJISTA",
-            'stoch_estado': "🟢 COMPRA" if stoch_k > stoch_d else "🔴 VENTA",
             'stoch_k': stoch_k,
             'stoch_d': stoch_d,
+            'cruce_alcista': cruce_alcista,
+            'cruce_bajista': cruce_bajista,
+            'macd_hist': df['macdhist'].iloc[-1],
+            'adx': df['adx'].iloc[-1],
+            'ema10': df['ema10'].iloc[-1],
             'cierra_arriba_ema10': precio > df['ema10'].iloc[-1],
             'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
-            'ema10': df['ema10'].iloc[-1],
-            'ema20': df['ema20'].iloc[-1],
-            'ema55': e55,
             'soporte': soporte_key,
             'resistencia': resistencia_key,
-            'bb_upper': df['bb_upper'].iloc[-1],
-            'bb_lower': df['bb_lower'].iloc[-1],
         }
     except Exception as e:
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (FILTROS RELAJADOS)
+# 5. MOTOR DE ESTRATEGIA (Ratio Mínimo 1.5)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
-    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf or '15m' not in analisis_tf:
+    if '15m' not in analisis_tf or '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
         return None
 
     d1 = analisis_tf['1d']
@@ -263,78 +213,54 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    adx_aprobado_long = h1['adx'] >= 10 and h1['rsi'] > 20 and h1['rsi'] < 85
-    adx_aprobado_short = h1['adx'] >= 10 and h1['rsi'] > 15 and h1['rsi'] < 80
+    # 1. FILTRO DIARIO (1D): Tendencia macro obligatoria
+    tendencia_1d_alcista = (d1['st_dir'] == 1)
+    tendencia_1d_bajista = (d1['st_dir'] == -1)
 
-    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20'])
-    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20'])
+    # 2. ESCUDO 4H: SuperTrend + Histograma MACD
+    tendencia_4h_alcista = (h4['st_dir'] == 1) and (h4['macd_hist'] > 0)
+    tendencia_4h_bajista = (h4['st_dir'] == -1) and (h4['macd_hist'] < 0)
 
-    filtro_tendencia_4h_long = h4['macd_hist'] > 0
-    filtro_tendencia_4h_short = h4['macd_hist'] < 0
+    # 3. FILTRO DE ADX EN 1H (Fuerza de tendencia >= 20)
+    adx_valido_1h = h1['adx'] >= 20
 
-    stoch_k_4h = h4.get('stoch_k', 50)
-    stoch_d_4h = h4.get('stoch_d', 50)
-    
-    # [RELAJADO] Sin límites numéricos extremos en 4H, solo que acompañe la dirección
-    filtro_osciladores_4h_long = (stoch_k_4h >= stoch_d_4h) or (h4['macd_hist'] > 0)
-    filtro_osciladores_4h_short = (stoch_k_4h <= stoch_d_4h) or (h4['macd_hist'] < 0)
+    # 4. FILTRO DE EXTENSIÓN (Distancia a la EMA 10 en 1H <= 1.5 ATR)
+    distancia_ema10 = abs(precio_act - h1['ema10'])
+    max_extension = atr_act * 1.5
+    filtro_no_extendido = distancia_ema10 <= max_extension
 
-    quiebre_inicial_long = h1.get('supertrend_buy', False)
-    quiebre_inicial_short = h1.get('supertrend_sell', False)
+    # 5. CONTROL 15 MINUTOS (15M): El precio va a favor en micro
+    filtro_15m_long = m15['cierra_arriba_ema10']
+    filtro_15m_short = m15['cierra_abajo_ema10']
 
-    continuacion_pausa_long = (h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'] and (h1['ema10'] > h1['ema55'])
-    continuacion_pausa_short = (h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'] and (h1['ema10'] < h1['ema55'])
-
-    gatillo_1h_long = quiebre_inicial_long or continuacion_pausa_long
-    gatillo_1h_short = quiebre_inicial_short or continuacion_pausa_short
-
-    stoch_k_1h = h1.get('stoch_k', 50)
-    
-    # [RELAJADO] Sin restricciones estrictas de >20 o <85 en 1H
-    filtro_osciladores_long = h1['cruce_alcista'] or (stoch_k_1h > h1['stoch_d']) or (h1['macd_hist'] > 0)
-    filtro_osciladores_short = h1['cruce_bajista'] or (stoch_k_1h < h1['stoch_d']) or (h1['macd_hist'] < 0)
-
-    distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 1.5 # Ampliado para permitir más espacio
-    filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
-
-    # 15 MINUTOS SIMPLIFICADO
-    filtro_15m_long_sano = m15['cierra_arriba_ema10']
-    filtro_15m_short_sano = m15['cierra_abajo_ema10']
-
-    emas_1h_alcistas = h1['ema10'] > h1['ema55']
-    emas_1h_bajistas = h1['ema10'] < h1['ema55']
-
-    gatillo_long_10x = (
-        d1['es_alcista'] and 
-        h4_alcista_real and  
-        filtro_tendencia_4h_long and 
-        filtro_osciladores_4h_long and 
-        emas_1h_alcistas and 
-        adx_aprobado_long and
-        gatillo_1h_long and  
-        filtro_osciladores_long and  
-        filtro_1h_no_extendido and
-        filtro_15m_long_sano             
+    # --- GATILLO LONG ---
+    gatillo_long = (
+        tendencia_1d_alcista and
+        tendencia_4h_alcista and 
+        adx_valido_1h and
+        filtro_no_extendido and
+        h1['stoch_k'] < 25 and 
+        h1['cruce_alcista'] and 
+        h1['macd_hist'] > 0 and
+        filtro_15m_long
     )
 
-    if gatillo_long_10x:
+    if gatillo_long:
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
-        
-        # [RELAJADO] Sin límite estricto de 3% para el Stop Loss
         riesgo = precio_act - sl_final
+        
         if riesgo > 0:
-            tp1 = precio_act + (riesgo * 1.0)
-            tp2 = precio_act + (riesgo * 1.5)
-            tp3 = precio_act + (riesgo * 2.0)
-
+            tp1 = precio_act + (riesgo * 1.5)
+            tp2 = precio_act + (riesgo * 2.5)
+            tp3 = precio_act + (riesgo * 3.5)
             beneficio = tp1 - precio_act
             ratio_actual = beneficio / riesgo
             
-            if ratio_actual >= 1.2: # Relajado ratio mínimo a 1.2
+            # FILTRO DE RATIO MÍNIMO 1.5
+            if ratio_actual >= 1.5:
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢 (R:R Pro)',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
@@ -342,43 +268,44 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'supertrend': h1['supertrend_estado'],
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
-                        f"Tendencia 4H alcista confirmada",
-                        f"Alineación y precio operando cerca de EMA en 1H",
-                        f"StochRSI / MACD 1H acompañando impulso",
-                        f"15M con cierre alcista sobre EMA 10 (SL: -{pct_sl:.2f}%)"
+                        "Tendencia DIARIA (1D) alcista confirmada",
+                        "Tendencia 4H alcista y MACD 4H positivos",
+                        f"ADX 1H saludable ({h1['adx']:.1f} >= 20)",
+                        f"Precio cerca de EMA 10 (Distancia: {distancia_ema10:.4f} <= 1.5 ATR)",
+                        f"StochRSI en el PISO ({h1['stoch_k']:.1f}) con cruce alcista en 1H",
+                        "15M acompañando con cierre sobre EMA 10",
+                        f"Ratio Riesgo/Beneficio excelente (1:{ratio_actual:.2f})"
                     ]
                 })
 
-    gatillo_short_10x = (
-        d1['es_bajista'] and 
-        h4_bajista_real and  
-        filtro_tendencia_4h_short and 
-        filtro_osciladores_4h_short and 
-        emas_1h_bajistas and 
-        adx_aprobado_short and
-        gatillo_1h_short and 
-        filtro_osciladores_short and 
-        filtro_1h_no_extendido and
-        filtro_15m_short_sano            
+    # --- GATILLO SHORT ---
+    gatillo_short = (
+        tendencia_1d_bajista and
+        tendencia_4h_bajista and 
+        adx_valido_1h and
+        filtro_no_extendido and
+        h1['stoch_k'] > 75 and 
+        h1['cruce_bajista'] and 
+        h1['macd_hist'] < 0 and
+        filtro_15m_short
     )
 
-    if gatillo_short_10x:
+    if gatillo_short:
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
-        
-        # [RELAJADO] Sin límite estricto de 3% para el Stop Loss
         riesgo = sl_final - precio_act
+        
         if riesgo > 0:
-            tp1 = precio_act - (riesgo * 1.2)
-            tp2 = precio_act - (riesgo * 2.0)
-            tp3 = precio_act - (riesgo * 3.0)
-            
+            tp1 = precio_act - (riesgo * 1.5)
+            tp2 = precio_act - (riesgo * 2.5)
+            tp3 = precio_act - (riesgo * 3.5)
             beneficio = precio_act - tp1
             ratio_actual = beneficio / riesgo
 
-            if ratio_actual >= 1.2: # Relajado ratio mínimo a 1.2
+            # FILTRO DE RATIO MÍNIMO 1.5
+            if ratio_actual >= 1.5:
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴 (R:R Pro)',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
@@ -386,17 +313,20 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'supertrend': h1['supertrend_estado'],
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
-                        f"Tendencia 4H bajista confirmada",
-                        f"Alineación y control de extensión en 1H",
-                        f"StochRSI / MACD 1H habilitando la caída",
-                        f"15M con cierre bajista bajo EMA 10 (SL: -{pct_sl:.2f}%)"
+                        "Tendencia DIARIA (1D) bajista confirmada",
+                        "Tendencia 4H bajista y MACD 4H negativos",
+                        f"ADX 1H saludable ({h1['adx']:.1f} >= 20)",
+                        f"Precio cerca de EMA 10 (Distancia: {distancia_ema10:.4f} <= 1.5 ATR)",
+                        f"StochRSI en el CIELO ({h1['stoch_k']:.1f}) con cruce bajista en 1H",
+                        "15M acompañando con cierre bajo EMA 10",
+                        f"Ratio Riesgo/Beneficio excelente (1:{ratio_actual:.2f})"
                     ]
                 })
 
     return sniper_res
 
 # ==========================================
-# 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
+# 6. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
 def obtener_pares_top():
     try:
@@ -414,35 +344,16 @@ def obtener_pares_top():
         ]
         
         pares_usdt = sorted(pares_usdt, key=lambda x: x['volume'], reverse=True)
-        return [item['symbol'] for item in pares_usdt[:350]]
+        return [item['symbol'] for item in pares_usdt[:250]]
     except Exception as e:
         logging.error(f"Error obteniendo pares top: {e}")
         return []
-
-def analizar_cripto_individual(ticker_raw):
-    ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
-    simbolo_limpio = ticker.split('/')[0]
-    
-    temporalidades = ['15m', '1h', '4h', '1d', '1w']
-    msj = f"🤖 **BOT ACTIVO (Filtros Relax) ✅**\n\n📊 *ANÁLISIS: ${simbolo_limpio}*\n\n"
-    
-    for tf in temporalidades:
-        res = analizar_par_completo(ticker, tf)
-        if res is not None:
-            msj += f"• *Temporalidad {tf.upper()}*:\n"
-            msj += f"  - Precio: `{fmt_precio(res['precio'])}`\n"
-            msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
-            msj += f"  - StochRSI K: `{res['stoch_k']:.1f}` | D: `{res['stoch_d']:.1f}`\n\n"
-        else:
-            msj += f"• *Temporalidad {tf.upper()}*: Sin datos suficientes.\n\n"
-            
-    enviar_telegram(msj)
 
 def evaluar_trade_manual(ticker_raw):
     ticker = ticker_raw.upper().replace("$", "").replace("USDT", "") + "/USDT"
     simbolo_limpio = ticker.split('/')[0]
     
-    temporalidades = ['15m', '1h', '4h', '1d', '1w']
+    temporalidades = ['15m', '1h', '4h', '1d']
     analisis_tf = {}
     
     for tf in temporalidades:
@@ -453,32 +364,26 @@ def evaluar_trade_manual(ticker_raw):
         analisis_tf[tf] = res
 
     sniper = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
-    
-    msj = f"🤖 **BOT ACTIVO (Filtros Relax) ✅**\n\n🎯 *EVALUACIÓN MANUAL: ${simbolo_limpio}*\n\n"
+    msj = f"🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\n🎯 *EVALUACIÓN MANUAL: ${simbolo_limpio}*\n\n"
 
     if sniper:
         for op in sniper:
-            msj += f"⚡ *ESTRATEGIA 10X {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
-            msj += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
+            msj += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj += f"🔮 *SuperTrend 1H:* `{op['supertrend']}`\n"
             msj += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
             msj += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
-            msj += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
-            msj += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
             msj += f"📋 *Condiciones Cumplidas:*\n"
             for m in op.get('motivos', []):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *ESTRATEGIA 10X:* No cumple con las reglas mínimas actuales.\n\n"
+        msj += "⚪ No cumple con los filtros o su Ratio Riesgo/Beneficio es menor a 1.5.\n\n"
 
     enviar_telegram(msj)
 
-# ==========================================
-# 6. ESCANEO RÁPIDO CONCURRENTE
-# ==========================================
 def procesar_par_paralelo(par):
-    temporalidades = ['15m', '1h', '4h', '1d', '1w']
+    temporalidades = ['15m', '1h', '4h', '1d']
     analisis_tf = {}
     for tf in temporalidades:
         res = analizar_par_completo(par, tf)
@@ -486,11 +391,10 @@ def procesar_par_paralelo(par):
             analisis_tf[tf] = res
     
     simbolo_limpio = par.split('/')[0]
-    sniper = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
-    return sniper
+    return evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO (Filtros Relax) ✅**\n\n🔍 Escaneando mercado con filtros flexibles...")
+    enviar_telegram("🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\n🔍 Escaneando mercado exigiendo R:R >= 1.5...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -513,24 +417,19 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper):
     if not entradas_sniper:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nNinguna criptomoneda cumple con las condiciones actuales.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY OPORTUNIDADES ACTIVAS*\n\nNingún par cumple con los filtros estrictos y un R:R de al menos 1.5.")
         return
 
-    if entradas_sniper:
-        msj_sniper = "🤖 **BOT ACTIVO (Filtros Relax) ✅**\n\n⚡ *ENTRADAS DETECTADAS:* ⚡\n\n"
-        for op in entradas_sniper[:5]:
-            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
-            msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
-            msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
-            msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
-            msj_sniper += f"📋 *Condiciones Cumplidas:*\n"
-            for m in op.get('motivos', []):
-                msj_sniper += f"  • {m}\n"
-            msj_sniper += "\n"
-        enviar_telegram(msj_sniper)
+    msj_sniper = "🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\n⚡ *OPORTUNIDADES DETECTADAS:* ⚡\n\n"
+    for op in entradas_sniper[:5]:
+        msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+        msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
+        msj_sniper += f"🛑 *SL:* `{fmt_precio(op['sl'])}` | 🎯 *TP1:* `{fmt_precio(op['tp1'])}`\n"
+        msj_sniper += f"📋 *Motivos:*\n"
+        for m in op.get('motivos', []):
+            msj_sniper += f"  • {m}\n"
+        msj_sniper += "\n"
+    enviar_telegram(msj_sniper)
 
 # ==========================================
 # 7. ESCUCHADOR DE TELEGRAM BLINDADO
@@ -556,17 +455,8 @@ def escuchar_mensajes_telegram():
                     offset = result["update_id"] + 1
                     message = result.get("message", {})
                     text = message.get("text", "").strip()
-                    
-                    if text.startswith("/analizar"):
-                        partes = text.split()
-                        if len(partes) > 1:
-                            ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Analizando `${ticker.upper()}`...")
-                            analizar_cripto_individual(ticker)
-                        else:
-                            enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/analizar BTC`")
                             
-                    elif text.startswith("/trade"):
+                    if text.startswith("/trade"):
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
@@ -583,7 +473,7 @@ def escuchar_mensajes_telegram():
         time.sleep(1)
 
 # ==========================================
-# 8. ESCANEO AUTOMÁTICO GENERAL (CADA 2 HORAS)
+# 8. ESCANEO AUTOMÁTICO GENERAL
 # ==========================================
 ARCHIVO_BLOQUEO = "ultimo_escaneo.txt"
 
@@ -642,38 +532,8 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    try:
-        symbol_btc = "BTC/USDT"
-        temporalidades = ['15m', '1h', '4h', '1d', '1w']
-        analisis_btc = {}
-        
-        for tf in temporalidades:
-            res_tf = analizar_par_completo(symbol_btc, tf)
-            if res_tf:
-                analisis_btc[tf] = res_tf
-                
-        if '1h' in analisis_btc:
-            precio_btc = analisis_btc['1h']['precio']
-            msj_inicio = f"🤖 **BOT ACTIVO (Filtros Relax) ✅**\n\n"
-            msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n\n"
-            msj_inicio += "📊 **Estado en Temporalidades:**\n"
-            
-            for tf in ['1h', '4h', '1d', '1w']:
-                if tf in analisis_btc:
-                    data = analisis_btc[tf]
-                    tendencia = data['supertrend_estado']
-                    st_k = data['stoch_k']
-                    st_d = data['stoch_d']
-                    
-                    msj_inicio += f"• **{tf.upper()}**: SuperTrend {tendencia} | StochRSI K: `{st_k:.1f}` | D: `{st_d:.1f}`\n"
-            
-            enviar_telegram(msj_inicio)
-        else:
-            enviar_telegram("🤖 **BOT ACTIVO (Filtros Relax) ✅**\n\nEl bot se ha iniciado correctamente.")
-    except Exception as e:
-        enviar_telegram(f"🤖 **BOT ACTIVO (Filtros Relax) ✅**\n\nEl bot se ha iniciado correctamente.")
-
-    logging.info("🚀 Bot actualizado con filtros relajados.")
+    enviar_telegram("🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\nEl bot se ha iniciado exigiendo un Ratio Riesgo/Beneficio mínimo de 1.5.")
+    logging.info("🚀 Bot actualizado y listo.")
     
     analizar_mercado()
     
