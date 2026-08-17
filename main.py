@@ -167,11 +167,6 @@ def analizar_par_completo(symbol, timeframe):
         
         stoch_k = df['stochrsi_k'].iloc[-1]
         stoch_d = df['stochrsi_d'].iloc[-1]
-        stoch_k_prev = df['stochrsi_k'].iloc[-2]
-        stoch_d_prev = df['stochrsi_d'].iloc[-2]
-        
-        cruce_alcista = (stoch_k_prev <= stoch_d_prev) and (stoch_k > stoch_d)
-        cruce_bajista = (stoch_k_prev >= stoch_d_prev) and (stoch_k < stoch_d)
 
         soporte_key, resistencia_key = calcular_soportes_resistencias(df, precio)
         atr = df['atr'].iloc[-1] if not df['atr'].empty else (precio * 0.02)
@@ -183,10 +178,10 @@ def analizar_par_completo(symbol, timeframe):
             'supertrend_estado': "🟢 ALCISTA" if st_dir == 1 else "🔴 BAJISTA",
             'stoch_k': stoch_k,
             'stoch_d': stoch_d,
-            'cruce_alcista': cruce_alcista,
-            'cruce_bajista': cruce_bajista,
             'macd_hist': df['macdhist'].iloc[-1],
+            'macd_hist_prev': df['macdhist'].iloc[-2],
             'adx': df['adx'].iloc[-1],
+            'adx_prev': df['adx'].iloc[-2],
             'ema10': df['ema10'].iloc[-1],
             'cierra_arriba_ema10': precio > df['ema10'].iloc[-1],
             'cierra_abajo_ema10': precio < df['ema10'].iloc[-1],
@@ -197,7 +192,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# 5. MOTOR DE ESTRATEGIA (Ratio Mínimo 1.5)
+# 5. MOTOR DE ESTRATEGIA (Sin Cruce de StochRSI, R:R >= 1.2)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '15m' not in analisis_tf or '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
@@ -221,8 +216,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     tendencia_4h_alcista = (h4['st_dir'] == 1) and (h4['macd_hist'] > 0)
     tendencia_4h_bajista = (h4['st_dir'] == -1) and (h4['macd_hist'] < 0)
 
-    # 3. FILTRO DE ADX EN 1H (Fuerza de tendencia >= 20)
-    adx_valido_1h = h1['adx'] >= 20
+    # 3. FILTRO DE ADX EN 1H (>= 20 Y con pendiente hacia arriba)
+    adx_valido_1h = (h1['adx'] >= 20) and (h1['adx'] > h1['adx_prev'])
 
     # 4. FILTRO DE EXTENSIÓN (Distancia a la EMA 10 en 1H <= 1.5 ATR)
     distancia_ema10 = abs(precio_act - h1['ema10'])
@@ -234,14 +229,17 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     filtro_15m_short = m15['cierra_abajo_ema10']
 
     # --- GATILLO LONG ---
+    es_valle_rojo_contrayendose = (h1['macd_hist'] < 0) and (h1['macd_hist'] > h1['macd_hist_prev'])
+    es_valle_verde_creciendo = (h1['macd_hist'] > 0) and (h1['macd_hist'] > h1['macd_hist_prev'])
+    macd_long_valido = es_valle_rojo_contrayendose or es_valle_verde_creciendo
+
     gatillo_long = (
         tendencia_1d_alcista and
         tendencia_4h_alcista and 
         adx_valido_1h and
         filtro_no_extendido and
-        h1['stoch_k'] < 25 and 
-        h1['cruce_alcista'] and 
-        h1['macd_hist'] > 0 and
+        h1['stoch_k'] < 25 and   # Solo evalúa que esté en zona de piso (< 25)
+        macd_long_valido and
         filtro_15m_long
     )
 
@@ -257,10 +255,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             beneficio = tp1 - precio_act
             ratio_actual = beneficio / riesgo
             
-            # FILTRO DE RATIO MÍNIMO 1.5
-            if ratio_actual >= 1.5:
+            if ratio_actual >= 1.2:
+                fase_macd_txt = "Valle rojo contrayéndose hacia cero (Giro temprano)" if es_valle_rojo_contrayendose else "Valle verde en expansión (Impulso fuerte)"
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢 (R:R Pro)',
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢 (Sin Cruce Stoch)',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
@@ -270,23 +268,27 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'motivos': [
                         "Tendencia DIARIA (1D) alcista confirmada",
                         "Tendencia 4H alcista y MACD 4H positivos",
-                        f"ADX 1H saludable ({h1['adx']:.1f} >= 20)",
+                        f"ADX 1H fuerte y en aumento ({h1['adx']:.1f} >= 20 y subiendo)",
                         f"Precio cerca de EMA 10 (Distancia: {distancia_ema10:.4f} <= 1.5 ATR)",
-                        f"StochRSI en el PISO ({h1['stoch_k']:.1f}) con cruce alcista en 1H",
+                        f"StochRSI en zona de PISO ({h1['stoch_k']:.1f} < 25)",
+                        f"MACD 1H: {fase_macd_txt}",
                         "15M acompañando con cierre sobre EMA 10",
-                        f"Ratio Riesgo/Beneficio excelente (1:{ratio_actual:.2f})"
+                        f"Ratio Riesgo/Beneficio aceptado (1:{ratio_actual:.2f} >= 1.2)"
                     ]
                 })
 
     # --- GATILLO SHORT ---
+    es_colina_verde_contrayendose = (h1['macd_hist'] > 0) and (h1['macd_hist'] < h1['macd_hist_prev'])
+    es_valle_rojo_profundizando = (h1['macd_hist'] < 0) and (h1['macd_hist'] < h1['macd_hist_prev'])
+    macd_short_valido = es_colina_verde_contrayendose or es_valle_rojo_profundizando
+
     gatillo_short = (
         tendencia_1d_bajista and
         tendencia_4h_bajista and 
         adx_valido_1h and
         filtro_no_extendido and
-        h1['stoch_k'] > 75 and 
-        h1['cruce_bajista'] and 
-        h1['macd_hist'] < 0 and
+        h1['stoch_k'] > 75 and   # Solo evalúa que esté en zona de cielo (> 75)
+        macd_short_valido and
         filtro_15m_short
     )
 
@@ -302,24 +304,25 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             beneficio = precio_act - tp1
             ratio_actual = beneficio / riesgo
 
-            # FILTRO DE RATIO MÍNIMO 1.5
-            if ratio_actual >= 1.5:
+            if ratio_actual >= 1.2:
+                fase_macd_txt = "Colina verde contrayéndose hacia cero (Giro temprano)" if es_colina_verde_contrayendose else "Valle rojo en expansión (Impulso bajista fuerte)"
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴 (R:R Pro)',
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴 (Sin Cruce Stoch)',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                    'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                    'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                     'supertrend': h1['supertrend_estado'],
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
                         "Tendencia DIARIA (1D) bajista confirmada",
                         "Tendencia 4H bajista y MACD 4H negativos",
-                        f"ADX 1H saludable ({h1['adx']:.1f} >= 20)",
+                        f"ADX 1H fuerte y en aumento ({h1['adx']:.1f} >= 20 y subiendo)",
                         f"Precio cerca de EMA 10 (Distancia: {distancia_ema10:.4f} <= 1.5 ATR)",
-                        f"StochRSI en el CIELO ({h1['stoch_k']:.1f}) con cruce bajista en 1H",
+                        f"StochRSI en zona de CIELO ({h1['stoch_k']:.1f} > 75)",
+                        f"MACD 1H: {fase_macd_txt}",
                         "15M acompañando con cierre bajo EMA 10",
-                        f"Ratio Riesgo/Beneficio excelente (1:{ratio_actual:.2f})"
+                        f"Ratio Riesgo/Beneficio aceptado (1:{ratio_actual:.2f} >= 1.2)"
                     ]
                 })
 
@@ -364,7 +367,7 @@ def evaluar_trade_manual(ticker_raw):
         analisis_tf[tf] = res
 
     sniper = evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
-    msj = f"🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\n🎯 *EVALUACIÓN MANUAL: ${simbolo_limpio}*\n\n"
+    msj = f"🤖 **BOT ACTIVO (Sin Cruce Stoch) ✅**\n\n🎯 *EVALUACIÓN MANUAL: ${simbolo_limpio}*\n\n"
 
     if sniper:
         for op in sniper:
@@ -378,7 +381,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ No cumple con los filtros o su Ratio Riesgo/Beneficio es menor a 1.5.\n\n"
+        msj += "⚪ No cumple con los filtros, el StochRSI no está en zona extrema, o su R:R es menor a 1.2.\n\n"
 
     enviar_telegram(msj)
 
@@ -394,7 +397,7 @@ def procesar_par_paralelo(par):
     return evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\n🔍 Escaneando mercado exigiendo R:R >= 1.5...")
+    enviar_telegram("🤖 **BOT ACTIVO (Sin Cruce Stoch) ✅**\n\n🔍 Escaneando mercado validando zonas extremas de StochRSI...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -417,10 +420,10 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas_sniper):
     if not entradas_sniper:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY OPORTUNIDADES ACTIVAS*\n\nNingún par cumple con los filtros estrictos y un R:R de al menos 1.5.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY OPORTUNIDADES ACTIVAS*\n\nNingún par cumple con los filtros actuales.")
         return
 
-    msj_sniper = "🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\n⚡ *OPORTUNIDADES DETECTADAS:* ⚡\n\n"
+    msj_sniper = "🤖 **BOT ACTIVO (Sin Cruce Stoch) ✅**\n\n⚡ *OPORTUNIDADES DETECTADAS:* ⚡\n\n"
     for op in entradas_sniper[:5]:
         msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
         msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
@@ -532,7 +535,7 @@ if __name__ == "__main__":
     hilo_telegram = threading.Thread(target=escuchar_mensajes_telegram, daemon=True)
     hilo_telegram.start()
     
-    enviar_telegram("🤖 **BOT ACTIVO (Ratio Min 1.5) ✅**\n\nEl bot se ha iniciado exigiendo un Ratio Riesgo/Beneficio mínimo de 1.5.")
+    enviar_telegram("🤖 **BOT ACTIVO (Sin Cruce Stoch) ✅**\n\nEl bot se ha iniciado evaluando únicamente que el StochRSI esté en zona de piso (<25) o cielo (>75), sin exigir cruce estricto.")
     logging.info("🚀 Bot actualizado y listo.")
     
     analizar_mercado()
