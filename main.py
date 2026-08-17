@@ -216,7 +216,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     tendencia_4h_bajista = (h4['st_dir'] == -1) and (h4['macd_hist'] < 0)
 
     # 3. FILTRO DE ADX EN 1H (Solo exige ADX >= 20, sin importar pendiente)
-    adx_valido_1h = (h1['adx'] >= 20)
+    adx_valido_1h = (h1['adx'] >= 12)
 
     # 4. FILTRO DE EXTENSIÓN (Distancia a la EMA 10 en 1H <= 1.5 ATR)
     distancia_ema10 = abs(precio_act - h1['ema10'])
