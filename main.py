@@ -251,7 +251,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     # 1. FILTRO DE EXTENSIÓN EN 4H (Estricto a 1.5 ATR de la EMA)
     # ==========================================
     distancia_4h_ema = abs(h4['precio'] - h4['ema20'])
-    max_extension_4h = h4['atr'] * 1.5  
+    max_extension_4h = h4['atr'] * 3.0 
     h4_no_extendido = distancia_4h_ema <= max_extension_4h
 
     h4_alcista_real = (
