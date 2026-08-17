@@ -136,6 +136,17 @@ def analizar_par_completo(symbol, timeframe):
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
+        # MACD
+        macd_ind = ta.trend.MACD(df['close'])
+        df['macd'] = macd_ind.macd()
+        df['macd_signal'] = macd_ind.macd_signal()
+        df['macd_diff'] = macd_ind.macd_diff()
+
+        # StochRSI
+        stoch_rsi = ta.momentum.StochRSIIndicator(df['close'], window=14, smooth1=3, smooth2=3)
+        df['stochrsi_k'] = stoch_rsi.stochrsi_k() * 100
+        df['stochrsi_d'] = stoch_rsi.stochrsi_d() * 100
+        
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
         df['bb_lower'] = indicator_bb.bollinger_lband()
@@ -217,6 +228,9 @@ def analizar_par_completo(symbol, timeframe):
             'ema10': df['ema10'].iloc[-1],
             'ema20': df['ema20'].iloc[-1],
             'ema55': e55,
+            'macd_diff': df['macd_diff'].iloc[-1],
+            'macd_diff_prev': df['macd_diff'].iloc[-2],
+            'stochrsi_k': df['stochrsi_k'].iloc[-1],
             'soporte': soporte_key,
             'resistencia': resistencia_key,
             'bb_upper': df['bb_upper'].iloc[-1],
@@ -229,9 +243,10 @@ def analizar_par_completo(symbol, timeframe):
 # MÓDULO UNIFICADO DE EVALUACIÓN
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
-    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
+    if '15m' not in analisis_tf or '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
         return None
 
+    m15 = analisis_tf['15m']
     d1 = analisis_tf['1d']
     h4 = analisis_tf['4h']
     h1 = analisis_tf['1h']
@@ -240,6 +255,25 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     atr_act = h1['atr']
     
     sniper_res = []
+
+    # 1. FILTRO TEMPORALIDAD 15M (EMA 10 sobre o bajo EMA 55)
+    filtro_15m_long = m15['ema10'] > m15['ema55']
+    filtro_15m_short = m15['ema10'] < m15['ema55']
+
+    # 2. FILTRO 4H: Precio no sumamente alejado de la EMA 10 (máximo 1.5 ATR)
+    distancia_4h_ema10 = abs(h4['precio'] - h4['ema10'])
+    filtro_4h_cercano_ema10 = distancia_4h_ema10 <= (h4['atr'] * 1.5)
+
+    # 3. FILTRO MACD & STOCHRSI (Valle rojo claro + zona baja stochrsi / toque de punto cero sin caer; y viceversa para short)
+    # Long: valle rojo claro (macd_diff < 0 pero subiendo o tocando/cercano a cero sin caer) + stochrsi en zona baja (< 30)
+    macd_valle_rojo_claro_long = (h1['macd_diff'] < 0) and (h1['macd_diff'] >= h1['macd_diff_prev'])
+    stochrsi_zona_baja_long = h1['stochrsi_k'] < 30
+    filtro_macd_stoch_long = macd_valle_rojo_claro_long and stochrsi_zona_baja_long
+
+    # Short: valle verde claro (macd_diff > 0 pero bajando o tocando cero sin subir) + stochrsi en la cima (> 70)
+    macd_valle_verde_claro_short = (h1['macd_diff'] > 0) and (h1['macd_diff'] <= h1['macd_diff_prev'])
+    stochrsi_cima_short = h1['stochrsi_k'] > 70
+    filtro_macd_stoch_short = macd_valle_verde_claro_short and stochrsi_cima_short
 
     # ADX optimizado y rangos de RSI seguros
     adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
@@ -253,7 +287,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     gatillo_1h_long = h1.get('supertrend_buy', False) or ((h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'])
     gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
-    # FILTRO DE FLUJO DE DINERO (MFI) - Mantenemos MFI porque es más fiable que el Stoch
+    # FILTRO DE FLUJO DE DINERO (MFI)
     filtro_mfi_long = h1['mfi'] > 40
     filtro_mfi_short = h1['mfi'] < 60
 
@@ -262,14 +296,16 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     max_extension_1h = h1['atr'] * 1.5 
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # NUEVO: Filtro simple de "Sobrecompra/Sobreventa Extrema" (Solo para evitar entrar cuando el mercado se dio vuelta)
     filtro_rsi_no_extremo_long = h1['rsi'] < 85
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
 
-    # GATILLOS FINALES 10X
+    # GATILLOS FINALES INCLUYENDO NUEVAS REGLAS (MACD, StochRSI, 15m EMA, 4H distancia EMA 10)
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
+        filtro_4h_cercano_ema10 and
+        filtro_15m_long and
+        filtro_macd_stoch_long and
         adx_aprobado_long and
         gatillo_1h_long and  
         filtro_mfi_long and
@@ -281,32 +317,39 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        riesgo = precio_act - sl_final
-        tp1 = precio_act + (riesgo * 1.5)
-        tp2 = precio_act + (riesgo * 2.5)
-        tp3 = precio_act + (riesgo * 3.5)
+        # REGLA: Tope máximo de 3% de Stop Loss, sino se descarta
+        if pct_sl <= 3.0:
+            riesgo = precio_act - sl_final
+            tp1 = precio_act + (riesgo * 1.5)
+            tp2 = precio_act + (riesgo * 2.5)
+            tp3 = precio_act + (riesgo * 3.5)
 
-        ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
-        
-        if riesgo > 0 and ratio_actual >= 1.2: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    f"Alineación alcista estructural confirmada",
-                    f"SuperTrend 1H en impulso positivo",
-                    f"MFI confirma flujo de entrada de capital"
-                ]
-            })
+            ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
+            
+            if riesgo > 0 and ratio_actual >= 1.2: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        f"Alineación alcista estructural confirmada",
+                        f"15m EMA 10 > EMA 55 validada",
+                        f"4H precio cerca de EMA 10 (<= 1.5 ATR)",
+                        f"MACD valle rojo claro / StochRSI en zona baja",
+                        f"SuperTrend 1H en impulso positivo"
+                    ]
+                })
 
     gatillo_short_10x = (
         d1['es_bajista'] and 
         h4_bajista_real and  
+        filtro_4h_cercano_ema10 and
+        filtro_15m_short and
+        filtro_macd_stoch_short and
         adx_aprobado_short and
         gatillo_1h_short and 
         filtro_mfi_short and
@@ -318,30 +361,35 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
-        riesgo = sl_final - precio_act
-        tp1 = precio_act - (riesgo * 1.5)
-        tp2 = precio_act - (riesgo * 2.5)
-        tp3 = precio_act - (riesgo * 3.5)
-        
-        ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
+        # REGLA: Tope máximo de 3% de Stop Loss, sino se descarta
+        if pct_sl <= 3.0:
+            riesgo = sl_final - precio_act
+            tp1 = precio_act - (riesgo * 1.5)
+            tp2 = precio_act - (riesgo * 2.5)
+            tp3 = precio_act - (riesgo * 3.5)
+            
+            ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
-        if riesgo > 0 and ratio_actual >= 1.2: 
-            sniper_res.append({
-                'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
-                'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
-                'supertrend': h1['supertrend_estado'],
-                'rr': f"1:{ratio_actual:.2f}",
-                'motivos': [
-                    f"Alineación bajista estructural confirmada",
-                    f"SuperTrend 1H en impulso negativo",
-                    f"MFI confirma salida de capital"
-                ]
-            })
+            if riesgo > 0 and ratio_actual >= 1.2: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        f"Alineación bajista estructural confirmada",
+                        f"15m EMA 10 < EMA 55 validada",
+                        f"4H precio cerca de EMA 10 (<= 1.5 ATR)",
+                        f"MACD valle verde claro / StochRSI en la cima",
+                        f"SuperTrend 1H en impulso negativo"
+                    ]
+                })
 
     return sniper_res
+
 # ==========================================
 # 5. FUNCIONES DE ESCANEO / CONSULTA MANUAL
 # ==========================================
@@ -380,6 +428,7 @@ def analizar_cripto_individual(ticker_raw):
             msj += f"  - Precio: `{fmt_precio(res['precio'])}`\n"
             msj += f"  - SuperTrend: `{res['supertrend_estado']}`\n"
             msj += f"  - RSI: `{res['rsi']:.1f}` | MFI: `{res['mfi']:.1f}`\n"
+            msj += f"  - StochRSI K: `{res['stochrsi_k']:.1f}` | MACD Diff: `{res['macd_diff']:.4f}`\n"
             msj += f"  - ADX: `{res['adx']:.1f}` ({res['adx_fuerza']})\n"
             msj += f"  - Soporte: `{fmt_precio(res['soporte'])}` | Resistencia: `{fmt_precio(res['resistencia'])}`\n\n"
         else:
@@ -419,7 +468,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o R:R menor a 1.2).\n\n"
+        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o SL > 3%, o R:R menor a 1.2).\n\n"
 
     enviar_telegram(msj)
 
