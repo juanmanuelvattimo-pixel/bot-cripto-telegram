@@ -115,7 +115,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL (MACD + StochRSI Zonas)
+# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
@@ -152,7 +152,6 @@ def analizar_par_completo(symbol, timeframe):
         macd_hist_prev = df['macd_hist'].iloc[-2]
         
         stoch_k = df['stoch_rsi_k'].iloc[-1]
-        stoch_d = df['stoch_rsi_d'].iloc[-1]
 
         # Zonas claras de MACD
         valle_rojo_claro = (macd_hist < 0) and (macd_hist > macd_hist_prev)
@@ -181,12 +180,13 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN (Zonas MACD + StochRSI en Zona)
+# MÓDULO UNIFICADO DE EVALUACIÓN (CON FILTRO EMA 10/55 DIARIO)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
         return None
 
+    d1 = analisis_tf['1d']
     h4 = analisis_tf['4h']
     h1 = analisis_tf['1h']
     
@@ -196,12 +196,13 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     resultados = []
 
     # ==========================================
-    # 1. SEÑAL LONG: Valle Rojo Claro (1H y 4H) + StochRSI en Zona Baja (< 40)
+    # 1. SEÑAL LONG: Valle Rojo Claro (1H y 4H) + StochRSI < 40 + EMA 10 > EMA 55 (Diario)
     # ==========================================
+    tendencia_diaria_alcista = d1['ema10'] > d1['ema55']
     condicion_long_macd = h1['valle_rojo_claro'] and h4['valle_rojo_claro']
     condicion_long_stoch = h1['stoch_k'] < 40
 
-    if condicion_long_macd and condicion_long_stoch:
+    if tendencia_diaria_alcista and condicion_long_macd and condicion_long_stoch:
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
@@ -215,26 +216,28 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             
             if riesgo > 0 and ratio_actual >= 1.2: 
                 resultados.append({
-                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'estrategia': 'MACD VALLE CLARO + STOCHRSI ZONA',
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'estrategia': 'MACD ZONAS + FILTRO DIARIO',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
                     'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
-                        f"MACD en zona roja clara (perdiendo fuerza bajista) en 1H y 4H",
+                        f"Tendencia diaria alcista (EMA 10 > EMA 55 en 1D)",
+                        f"MACD en zona roja clara en 1H y 4H",
                         f"StochRSI en zona baja (< 40)",
                         f"Stop Loss ajustado con ATR (1.0x)"
                     ]
                 })
 
     # ==========================================
-    # 2. SEÑAL SHORT: Cresta Verde Clara (1H y 4H) + StochRSI en Zona Alta (> 60)
+    # 2. SEÑAL SHORT: Cresta Verde Clara (1H y 4H) + StochRSI > 60 + EMA 10 < EMA 55 (Diario)
     # ==========================================
+    tendencia_diaria_bajista = d1['ema10'] < d1['ema55']
     condicion_short_macd = h1['valle_verde_claro'] and h4['valle_verde_claro']
     condicion_short_stoch = h1['stoch_k'] > 60
 
-    if condicion_short_macd and condicion_short_stoch:
+    if tendencia_diaria_bajista and condicion_short_macd and condicion_short_stoch:
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
@@ -248,14 +251,15 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
             if riesgo > 0 and ratio_actual >= 1.2: 
                 resultados.append({
-                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'estrategia': 'MACD VALLE CLARO + STOCHRSI ZONA',
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'estrategia': 'MACD ZONAS + FILTRO DIARIO',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((precio_act - tp2)/precio_act)*100,
-                    'tp3': tp3, 'pct_tp3': abs((precio_act - tp3)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
-                        f"MACD en zona verde clara (perdiendo fuerza alcista) en 1H y 4H",
+                        f"Tendencia diaria bajista (EMA 10 < EMA 55 en 1D)",
+                        f"MACD en zona verde clara en 1H y 4H",
                         f"StochRSI en zona alta (> 60)",
                         f"Stop Loss ajustado con ATR (1.0x)"
                     ]
@@ -292,16 +296,16 @@ def analizar_cripto_individual(ticker_raw):
     simbolo_limpio = ticker.split('/')[0]
     
     temporalidades = ['15m', '1h', '4h', '1d', '1w']
-    msj = f"🤖 **BOT ACTIVO (MACD Zonas) ✅**\n\n📊 *ANÁLISIS TÉCNICO: ${simbolo_limpio}*\n\n"
+    msj = f"🤖 **BOT ACTIVO (Filtro Diario) ✅**\n\n📊 *ANÁLISIS TÉCNICO: ${simbolo_limpio}*\n\n"
     
     for tf in temporalidades:
         res = analizar_par_completo(ticker, tf)
         if res is not None:
             msj += f"• *Temporalidad {tf.upper()}*:\n"
             msj += f"  - Precio: `{fmt_precio(res['precio'])}`\n"
+            msj += f"  - EMA 10: `{fmt_precio(res['ema10'])}` | EMA 55: `{fmt_precio(res['ema55'])}`\n"
             msj += f"  - MACD Histograma: `{res['macd_hist']:.4f}`\n"
-            msj += f"  - StochRSI K: `{res['stoch_k']:.1f}`\n"
-            msj += f"  - Soporte: `{fmt_precio(res['soporte'])}` | Resistencia: `{fmt_precio(res['resistencia'])}`\n\n"
+            msj += f"  - StochRSI K: `{res['stoch_k']:.1f}`\n\n"
         else:
             msj += f"• *Temporalidad {tf.upper()}*: Sin datos suficientes.\n\n"
             
@@ -338,7 +342,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ No se cumplen las condiciones de zona MACD/StochRSI en este momento.\n\n"
+        msj += "⚪ No se cumplen las condiciones o la tendencia diaria EMA 10/55 bloquea la operación.\n\n"
 
     enviar_telegram(msj)
 
@@ -357,7 +361,7 @@ def procesar_par_paralelo(par):
     return evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf)
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando el mercado buscando zonas claras MACD + StochRSI...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando el mercado filtrando por tendencia diaria (EMA 10/55)...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -380,10 +384,10 @@ def escanear_senales_sniper_manual():
 
 def enviar_resultados_escaneo(entradas):
     if not entradas:
-        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nNinguna criptomoneda cumple con las zonas configuradas.")
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *NO HAY ENTRADAS ACTIVAS*\n\nNinguna criptomoneda cumple con las zonas y la tendencia diaria.")
         return
 
-    msj = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS DETECTADAS (ZONAS MACD):* ⚡\n\n"
+    msj = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS DETECTADAS (FILTRO DIARIO OK):* ⚡\n\n"
     for op in entradas[:5]:
         msj += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
         msj += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
@@ -435,7 +439,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando zonas MACD para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando tendencia diaria para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
@@ -513,7 +517,7 @@ if __name__ == "__main__":
                 
         if res_btc:
             precio_btc = res_btc['precio']
-            msj_inicio = f"🤖 **BOT ACTIVO (Zonas MACD + StochRSI) ✅**\n\n"
+            msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n"
             msj_inicio += f"📊 MACD Histograma 1H: `{res_btc['macd_hist']:.4f}` | StochRSI K: `{res_btc['stoch_k']:.1f}`\n"
             enviar_telegram(msj_inicio)
@@ -522,7 +526,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado con zonas MACD y StochRSI listo.")
+    logging.info("🚀 Bot actualizado con filtro de tendencia diaria listo.")
     
     analizar_mercado()
     
