@@ -171,11 +171,13 @@ def analizar_par_completo(symbol, timeframe):
             'rsi': df['rsi'].iloc[-1],
             'mfi': df['mfi'].iloc[-1],
             'macd_hist': macd_hist,
+            'macd_hist_prev': macd_hist_prev, # <-- Agregado para corregir el error
             'valle_rojo_claro': valle_rojo_claro,
             'valle_verde_claro': valle_verde_claro,
             'cruce_alcista_stoch': cruce_alcista_stoch,
             'cruce_bajista_stoch': cruce_bajista_stoch,
             'stoch_k': stoch_k,
+            'stoch_k_prev': stoch_k_prev,     # <-- Agregado por seguridad
             'ema10': df['ema10'].iloc[-1],
             'ema20': df['ema20'].iloc[-1],
             'ema55': df['ema55'].iloc[-1],
@@ -208,7 +210,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     condicion_long_stoch = h1['cruce_alcista_stoch'] and h1['stoch_k'] < 50
 
     if condicion_long_macd and condicion_long_stoch:
-        # Stop Loss ajustado estrictamente a 1.0x ATR
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
@@ -243,7 +244,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     condicion_short_stoch = h1['cruce_bajista_stoch'] and h1['stoch_k'] > 50
 
     if condicion_short_macd and condicion_short_stoch:
-        # Stop Loss ajustado estrictamente a 1.0x ATR
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
@@ -532,7 +532,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado con MACD, StochRSI y Stop Loss estricto (1.0x) listo.")
+    logging.info("🚀 Bot actualizado con MACD y StochRSI listo.")
     
     analizar_mercado()
     
