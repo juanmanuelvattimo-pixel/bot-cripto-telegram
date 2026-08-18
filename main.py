@@ -226,7 +226,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULO UNIFICADO DE EVALUACIÓN
+# MÓDULO UNIFICADO DE EVALUACIÓN (10X + PULLBACK LONG & SHORT)
 # ==========================================
 def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
@@ -241,37 +241,32 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     
     sniper_res = []
 
-    # ADX optimizado y rangos de RSI seguros
+    # ==========================================
+    # 1. ESTRATEGIA SNIPER 10X (Original)
+    # ==========================================
     adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
     adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
-    # FILTRO 4H (SuperTrend, EMA y RSI sincronizado)
     h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20']) and (h4['rsi'] < 75)
     h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20']) and (h4['rsi'] > 25)
 
-    # GATILLOS HÍBRIDOS 1H 
     gatillo_1h_long = h1.get('supertrend_buy', False) or ((h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'])
     gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
-    # FILTRO DE FLUJO DE DINERO (MFI)
     filtro_mfi_long = h1['mfi'] > 40
     filtro_mfi_short = h1['mfi'] < 60
 
-    # FILTRO ANTI-PERSECUCIÓN 1H (Reducido a 1.5x ATR)
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
     max_extension_1h = h1['atr'] * 1.5 
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-    # NUEVO: FILTRO ANTI-PERSECUCIÓN 4H (Máximo 1.5x ATR respecto a la EMA 10 en 4H)
     distancia_4h_ema = abs(h4['precio'] - h4['ema10'])
     max_extension_4h = h4['atr'] * 1.5 
     filtro_4h_no_extendido = distancia_4h_ema <= max_extension_4h
 
-    # NUEVO: Filtro simple de "Sobrecompra/Sobreventa Extrema"
     filtro_rsi_no_extremo_long = h1['rsi'] < 85
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
 
-    # GATILLOS FINALES 10X
     gatillo_long_10x = (
         d1['es_alcista'] and 
         h4_alcista_real and  
@@ -287,7 +282,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        # NUEVO: Tope máximo de Stop Loss del 3% (si supera el 3%, se descarta)
         if pct_sl <= 3.0:
             riesgo = precio_act - sl_final
             tp1 = precio_act + (riesgo * 1.5)
@@ -298,7 +292,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
             
             if riesgo > 0 and ratio_actual >= 1.2: 
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'estrategia': 'SNIPER 10X',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
@@ -327,7 +321,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
         
-        # NUEVO: Tope máximo de Stop Loss del 3% (si supera el 3%, se descarta)
         if pct_sl <= 3.0:
             riesgo = sl_final - precio_act
             tp1 = precio_act - (riesgo * 1.5)
@@ -338,7 +331,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
             if riesgo > 0 and ratio_actual >= 1.2: 
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'estrategia': 'SNIPER 10X',
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
@@ -349,6 +342,89 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                         f"Alineación bajista estructural confirmada",
                         f"SuperTrend 1H en impulso negativo",
                         f"MFI confirma salida de capital"
+                    ]
+                })
+
+    # ==========================================
+    # 2. SECCIÓN APARTE: ESTRATEGIA SNIPER PULLBACK (LONG & SHORT)
+    # ==========================================
+    tendencia_diaria_pullback = d1['es_alcista'] 
+    tendencia_4h_pullback = h4['supertrend_estado'] == "🟢 ALCISTA"
+    
+    cerca_ema_1h = abs(h1['precio'] - h1['ema10']) <= (h1['atr'] * 1.2) or abs(h1['precio'] - h1['ema20']) <= (h1['atr'] * 1.2)
+    
+    # Pullback Long
+    pullback_long = (
+        tendencia_diaria_pullback and
+        tendencia_4h_pullback and
+        h1['supertrend_estado'] == "🟢 ALCISTA" and
+        cerca_ema_1h and
+        h1['cruce_alcista'] and
+        h1['rsi'] < 60
+    )
+
+    if pullback_long:
+        sl_pullback = h1['soporte'] - (0.8 * atr_act)
+        pct_sl_pb = abs((precio_act - sl_pullback) / precio_act) * 100
+        if pct_sl_pb <= 3.5:
+            riesgo_pb = precio_act - sl_pullback
+            tp1_pb = precio_act + (riesgo_pb * 1.5)
+            tp2_pb = precio_act + (riesgo_pb * 2.5)
+            tp3_pb = precio_act + (riesgo_pb * 3.5)
+            ratio_pb = (tp1_pb - precio_act) / riesgo_pb if riesgo_pb > 0 else 0
+
+            if riesgo_pb > 0 and ratio_pb >= 1.2:
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'estrategia': 'SNIPER PULLBACK',
+                    'precio': precio_act, 'sl': sl_pullback, 'pct_sl': pct_sl_pb,
+                    'tp1': tp1_pb, 'pct_tp1': abs((tp1_pb - precio_act)/precio_act)*100,
+                    'tp2': tp2_pb, 'pct_tp2': abs((tp2_pb - precio_act)/precio_act)*100,
+                    'tp3': tp3_pb, 'pct_tp3': abs((tp3_pb - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_pb:.2f}",
+                    'motivos': [
+                        f"Pullback saludable a zona de EMAs en tendencia alcista",
+                        f"Cruce alcista del Estocástico en temporalidad 1H",
+                        f"RSI en zona óptima de rebote"
+                    ]
+                })
+
+    # Pullback Short (Añadido)
+    tendencia_diaria_pullback_short = d1['es_bajista']
+    tendencia_4h_pullback_short = h4['supertrend_estado'] == "🔴 BAJISTA"
+    
+    pullback_short = (
+        tendencia_diaria_pullback_short and
+        tendencia_4h_pullback_short and
+        h1['supertrend_estado'] == "🔴 BAJISTA" and
+        cerca_ema_1h and
+        h1['cruce_bajista'] and
+        h1['rsi'] > 40
+    )
+
+    if pullback_short:
+        sl_pullback_s = h1['resistencia'] + (0.8 * atr_act)
+        pct_sl_pbs = abs((sl_pullback_s - precio_act) / precio_act) * 100
+        if pct_sl_pbs <= 3.5:
+            riesgo_pbs = sl_pullback_s - precio_act
+            tp1_pbs = precio_act - (riesgo_pbs * 1.5)
+            tp2_pbs = precio_act - (riesgo_pbs * 2.5)
+            tp3_pbs = precio_act - (riesgo_pbs * 3.5)
+            ratio_pbs = (precio_act - tp1_pbs) / riesgo_pbs if riesgo_pbs > 0 else 0
+
+            if riesgo_pbs > 0 and ratio_pbs >= 1.2:
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'estrategia': 'SNIPER PULLBACK',
+                    'precio': precio_act, 'sl': sl_pullback_s, 'pct_sl': pct_sl_pbs,
+                    'tp1': tp1_pbs, 'pct_tp1': abs((precio_act - tp1_pbs)/precio_act)*100,
+                    'tp2': tp2_pbs, 'pct_tp2': abs((precio_act - tp2_pbs)/precio_act)*100,
+                    'tp3': tp3_pbs, 'pct_tp3': abs((precio_act - tp3_pbs)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_pbs:.2f}",
+                    'motivos': [
+                        f"Pullback de retroceso a zona de EMAs en tendencia bajista",
+                        f"Cruce bajista del Estocástico en temporalidad 1H",
+                        f"RSI en zona óptima de rechazo"
                     ]
                 })
 
@@ -419,7 +495,7 @@ def evaluar_trade_manual(ticker_raw):
 
     if sniper:
         for op in sniper:
-            msj += f"⚡ *ESTRATEGIA SNIPER 10X {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj += f"⚡ *ESTRATEGIA {op['estrategia']} {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
             msj += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
             msj += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
@@ -431,7 +507,7 @@ def evaluar_trade_manual(ticker_raw):
                 msj += f"  • {m}\n"
             msj += "\n"
     else:
-        msj += "⚪ *SNIPER 10X:* No cumple con las reglas actuales (o R:R menor a 1.2, o Stop Loss > 3%).\n\n"
+        msj += "⚪ *SNIPER / PULLBACK:* No cumple con las reglas actuales (o R:R menor a 1.2, o Stop Loss muy alto).\n\n"
 
     enviar_telegram(msj)
 
@@ -451,7 +527,7 @@ def procesar_par_paralelo(par):
     return sniper
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando todo el mercado concurrentemente en busca de entradas Sniper (10X y Pullback)...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -478,9 +554,9 @@ def enviar_resultados_escaneo(entradas_sniper):
         return
 
     if entradas_sniper:
-        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
+        msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER DETECTADAS (10X & PULLBACK):* ⚡\n\n"
         for op in entradas_sniper[:5]:
-            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* [{op['estrategia']}] _(R:R {op['rr']})_\n"
             msj_sniper += f"🔮 *SuperTrend:* `{op['supertrend']}`\n"
             msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
@@ -531,7 +607,7 @@ def escuchar_mensajes_telegram():
                         partes = text.split()
                         if len(partes) > 1:
                             ticker = partes[1]
-                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategia Sniper para `${ticker.upper()}`...")
+                            enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\n⏳ Evaluando estrategias Sniper para `${ticker.upper()}`...")
                             evaluar_trade_manual(ticker)
                         else:
                             enviar_telegram("🤖 **BOT ACTIVO ✅**\n\nℹ️ Indica la moneda. Ejemplo: `/trade BTC`")
@@ -617,7 +693,7 @@ if __name__ == "__main__":
             precio_btc = analisis_btc['1h']['precio']
             msj_inicio = f"🤖 **BOT ACTIVO ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n\n"
-            msj_inicio += "📊 **Estado en Temporalidades (Bot Sniper 10X):**\n"
+            msj_inicio += "📊 **Estado en Temporalidades (Bot Sniper 10X & Pullback):**\n"
             
             for tf in ['1h', '4h', '1d', '1w']:
                 if tf in analisis_btc:
