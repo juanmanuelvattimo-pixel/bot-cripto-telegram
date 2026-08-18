@@ -215,9 +215,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         
         if pct_sl <= 4.0:
             riesgo = precio_act - sl_final
-            tp1 = precio_act + (riesgo * 1.5)
-            tp2 = precio_act + (riesgo * 2.5)
-            tp3 = precio_act + (riesgo * 3.5)
+            tp1 = precio_act + (riesgo * 1.0)
+            tp2 = precio_act + (riesgo * 1.5)
+            tp3 = precio_act + (riesgo * 2.0)
 
             ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
             
@@ -231,9 +231,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'supertrend': "MACD GIRO",
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
-                        f"Valle rojo de MACD perdiendo fuerza (claro) en 1H y 4H",
-                        f"Cruce alcista de StochRSI en zona baja",
-                        f"Stop Loss ajustado con ATR (1.0x)"
+                        f"Valle rojo de MACD perdiendo fuerza (claro) en 1H",                       
+                        f"Cruce alcista de StochRSI en zona baja"
                     ]
                 })
 
@@ -249,9 +248,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
         
         if pct_sl <= 4.0:
             riesgo = sl_final - precio_act
-            tp1 = precio_act - (riesgo * 1.5)
-            tp2 = precio_act - (riesgo * 2.5)
-            tp3 = precio_act - (riesgo * 3.5)
+            tp1 = precio_act - (riesgo * 1.0)
+            tp2 = precio_act - (riesgo * 1.5)
+            tp3 = precio_act - (riesgo * 2.0)
             
             ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
@@ -266,8 +265,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
                     'rr': f"1:{ratio_actual:.2f}",
                     'motivos': [
                         f"Cresta verde de MACD perdiendo fuerza (clara) en 1H y 4H",
-                        f"Cruce bajista de StochRSI en zona alta",
-                        f"Stop Loss ajustado con ATR (1.0x)"
+                        f"Cruce bajista de StochRSI en zona alta"
                     ]
                 })
 
