@@ -318,12 +318,10 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
   )
 
   # NUEVO: CONDICIÓN STOCH RSI 1H (Sin exigir cruce, niveles inferiores para long < 30 y superiores para short > 70)
-  filtro_stoch_rsi_long = h1['stoch_rsi_k'] < 50
-  filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 50
+  filtro_stoch_rsi_long = h1['stoch_rsi_k'] < 40
+  filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 60
 
-  # FILTRO DE FLUJO DE DINERO (MFI)
-  filtro_mfi_long = h1['mfi'] > 50
-  filtro_mfi_short = h1['mfi'] < 50
+  
 
   # FILTRO ANTI-PERSECUCIÓN 1H (Reducido a 1.5x ATR)
   distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
@@ -346,7 +344,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
       and adx_aprobado_long
       and gatillo_1h_long
       and filtro_stoch_rsi_long  # <--- Condición Stoch RSI Long añadida
-      and filtro_mfi_long
       and filtro_1h_no_extendido
       and filtro_4h_no_extendido
       and filtro_rsi_no_extremo_long
@@ -396,7 +393,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
       and adx_aprobado_short
       and gatillo_1h_short
       and filtro_stoch_rsi_short  # <--- Condición Stoch RSI Short añadida
-      and filtro_mfi_short
       and filtro_1h_no_extendido
       and filtro_4h_no_extendido
       and filtro_rsi_no_extremo_short
