@@ -328,10 +328,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
   max_extension_1h = h1['atr'] * 1.5
   filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
-  # FILTRO ANTI-PERSECUCIÓN 4H (Máximo 1.5x ATR respecto a la EMA 10 en 4H)
-  distancia_4h_ema = abs(h4['precio'] - h4['ema10'])
-  max_extension_4h = h4['atr'] * 1.5
-  filtro_4h_no_extendido = distancia_4h_ema <= max_extension_4h
+ 
 
   # Filtro simple de "Sobrecompra/Sobreventa Extrema"
   filtro_rsi_no_extremo_long = h1['rsi'] < 85
@@ -345,7 +342,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
       and gatillo_1h_long
       and filtro_stoch_rsi_long  # <--- Condición Stoch RSI Long añadida
       and filtro_1h_no_extendido
-      and filtro_4h_no_extendido
       and filtro_rsi_no_extremo_long
   )
 
@@ -353,7 +349,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sl_final = h1['soporte'] - (1.0 * atr_act)
     pct_sl = abs((precio_act - sl_final) / precio_act) * 100
 
-    if pct_sl <= 3.0:
+    if pct_sl <= 5.0:
       riesgo = precio_act - sl_final
       tp1 = precio_act + (riesgo * 1.0)
       tp2 = precio_act + (riesgo * 1.5)
@@ -394,7 +390,6 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
       and gatillo_1h_short
       and filtro_stoch_rsi_short  # <--- Condición Stoch RSI Short añadida
       and filtro_1h_no_extendido
-      and filtro_4h_no_extendido
       and filtro_rsi_no_extremo_short
   )
 
@@ -402,7 +397,7 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
     sl_final = h1['resistencia'] + (1.0 * atr_act)
     pct_sl = abs((sl_final - precio_act) / precio_act) * 100
 
-    if pct_sl <= 3.0:
+    if pct_sl <= 5.0:
       riesgo = sl_final - precio_act
       tp1 = precio_act - (riesgo * 1.0)
       tp2 = precio_act - (riesgo * 1.5)
