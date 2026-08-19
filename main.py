@@ -294,8 +294,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
   sniper_res = []
 
   # ADX optimizado y rangos de RSI seguros
-  adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
-  adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
+  adx_aprobado_long = h1['adx'] >= 18 and h1['rsi'] > 25 and h1['rsi'] < 80
+  adx_aprobado_short = h1['adx'] >= 18 and h1['rsi'] > 20 and h1['rsi'] < 75
 
   # FILTRO 4H (SuperTrend, EMA y RSI sincronizado)
   h4_alcista_real = (
@@ -318,8 +318,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
   )
 
   # NUEVO: CONDICIÓN STOCH RSI 1H (Sin exigir cruce, niveles inferiores para long < 30 y superiores para short > 70)
-  filtro_stoch_rsi_long = h1['stoch_rsi_k'] < 30
-  filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 70
+  filtro_stoch_rsi_long = h1['stoch_rsi_k'] < 40
+  filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 60
 
   # FILTRO DE FLUJO DE DINERO (MFI)
   filtro_mfi_long = h1['mfi'] > 40
@@ -358,9 +358,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if pct_sl <= 3.0:
       riesgo = precio_act - sl_final
-      tp1 = precio_act + (riesgo * 1.5)
-      tp2 = precio_act + (riesgo * 2.5)
-      tp3 = precio_act + (riesgo * 3.5)
+      tp1 = precio_act + (riesgo * 1.0)
+      tp2 = precio_act + (riesgo * 1.5)
+      tp3 = precio_act + (riesgo * 2.0)
 
       ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
 
@@ -408,9 +408,9 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
 
     if pct_sl <= 3.0:
       riesgo = sl_final - precio_act
-      tp1 = precio_act - (riesgo * 1.5)
-      tp2 = precio_act - (riesgo * 2.5)
-      tp3 = precio_act - (riesgo * 3.5)
+      tp1 = precio_act - (riesgo * 1.0)
+      tp2 = precio_act - (riesgo * 1.5)
+      tp3 = precio_act - (riesgo * 2.0)
 
       ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
