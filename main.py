@@ -115,7 +115,7 @@ def calcular_soportes_resistencias(df, precio_actual):
     return soporte, resistencia
 
 # ==========================================
-# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL (UNIFICADO)
+# 4. MOTOR DE ANÁLISIS MULTI-TEMPORAL
 # ==========================================
 def analizar_par_completo(symbol, timeframe):
     try:
@@ -129,38 +129,31 @@ def analizar_par_completo(symbol, timeframe):
         n_velas = len(df)
         precio = df['close'].iloc[-1]
 
-        # EMAs
         df['ema10'] = ta.trend.ema_indicator(df['close'], window=10)
         df['ema20'] = ta.trend.ema_indicator(df['close'], window=20)
         df['ema55'] = ta.trend.ema_indicator(df['close'], window=55)
         
-        # Momentum y Volumen
         df['rsi'] = ta.momentum.rsi(df['close'], window=14)
         df['mfi'] = ta.volume.money_flow_index(df['high'], df['low'], df['close'], df['volume'], window=14)
         
-        # Bollinger Bands
         indicator_bb = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
         df['bb_upper'] = indicator_bb.bollinger_hband()
         df['bb_lower'] = indicator_bb.bollinger_lband()
         
-        # ADX
         adx_ind = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
         df['adx'] = adx_ind.adx()
         df['plus_di'] = adx_ind.adx_pos()
         df['minus_di'] = adx_ind.adx_neg()
         
-        # MACD (Para la sección de Alertas MACD)
         macd_ind = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
         df['macd'] = macd_ind.macd()
         df['macd_signal'] = macd_ind.macd_signal()
         df['macd_hist'] = macd_ind.macd_diff()
 
-        # StochRSI
         stoch_rsi = ta.momentum.StochRSIIndicator(df['close'], window=14, smooth1=3, smooth2=3)
         df['stoch_rsi_k'] = stoch_rsi.stochrsi_k() * 100
         df['stoch_rsi_d'] = stoch_rsi.stochrsi_d() * 100
 
-        # ATR y SuperTrend (Para la Estrategia Sniper)
         df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
         multiplicador = 2.0
         hl2 = (df['high'] + df['low']) / 2
@@ -176,13 +169,11 @@ def analizar_par_completo(symbol, timeframe):
             else:
                 df.loc[df.index[i], 'supertrend_direction'] = df['supertrend_direction'].iloc[i-1]
 
-        # Estocástico tradicional / base
         low_min = df['low'].rolling(window=14).min()
         high_max = df['high'].rolling(window=14).max()
         df['stoch_k'] = ((df['close'] - low_min) / (high_max - low_min)) * 100
         df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
 
-        # Variables extraídas
         e55 = df['ema55'].iloc[-1]
         st_dir = df['supertrend_direction'].iloc[-1]
         st_dir_prev = df['supertrend_direction'].iloc[-2]
@@ -246,7 +237,7 @@ def analizar_par_completo(symbol, timeframe):
         return None
 
 # ==========================================
-# MÓDULOS DE EVALUACIÓN DE ESTRATEGIAS SEPARADAS
+# MÓDULOS DE EVALUACIÓN DE ESTRATEGIAS
 # ==========================================
 def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
@@ -269,7 +260,8 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
     gatillo_1h_long = h1.get('supertrend_buy', False) or ((h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'])
     gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
 
-    
+    filtro_mfi_long = h1['mfi'] > 40
+    filtro_mfi_short = h1['mfi'] < 60
 
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
     max_extension_1h = h1['atr'] * 1.5 
@@ -282,17 +274,14 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
     filtro_rsi_no_extremo_long = h1['rsi'] < 85
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
 
-    # NUEVO: Filtros StochRSI para Sniper (Zona baja < 40 para LONG, Zona alta > 60 para SHORT)
-    filtro_stoch_rsi_long = h1['stoch_rsi_k'] < 40
-    filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 60
-
     # LONG SNIPER
-    if (d1['es_alcista'] and h4_alcista_real and adx_aprobado_long and gatillo_1h_long and filtro_1h_no_extendido and filtro_4h_no_extendido and filtro_rsi_no_extremo_long and filtro_stoch_rsi_long):
+    if (d1['es_alcista'] and h4_alcista_real and adx_aprobado_long and gatillo_1h_long and 
+        filtro_mfi_long and filtro_1h_no_extendido and filtro_4h_no_extendido and filtro_rsi_no_extremo_long):
         
         sl_final = h1['soporte'] - (1.0 * atr_act)
         pct_sl = abs((precio_act - sl_final) / precio_act) * 100
         
-        if pct_sl <= 4.0:
+        if pct_sl <= 3.0:
             riesgo = precio_act - sl_final
             tp1 = precio_act + (riesgo * 1.5)
             tp2 = precio_act + (riesgo * 2.5)
@@ -300,8 +289,12 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
             ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
             
             if riesgo > 0 and ratio_actual >= 1.2: 
+                optimo_stoch = h1['stoch_rsi_k'] < 40
+                categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
+                estado_stoch_txt = f"StochRSI en zona baja ({h1['stoch_rsi_k']:.1f} < 40) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona baja ({h1['stoch_rsi_k']:.1f} >= 40) [Flexible ⚠️]"
+
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢',
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'categoria': categoria,
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
@@ -311,13 +304,14 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
                     'motivos': [
                         "Alineación alcista estructural confirmada",
                         "SuperTrend 1H en impulso positivo",
-                       
-                        f"StochRSI en zona baja ({h1['stoch_rsi_k']:.1f} < 40)"
+                        "MFI confirma flujo de entrada de capital",
+                        estado_stoch_txt
                     ]
                 })
 
     # SHORT SNIPER
-    if (d1['es_bajista'] and h4_bajista_real and adx_aprobado_short and gatillo_1h_short and filtro_1h_no_extendido and filtro_4h_no_extendido and filtro_rsi_no_extremo_short and filtro_stoch_rsi_short):
+    if (d1['es_bajista'] and h4_bajista_real and adx_aprobado_short and gatillo_1h_short and 
+        filtro_mfi_short and filtro_1h_no_extendido and filtro_4h_no_extendido and filtro_rsi_no_extremo_short):
         
         sl_final = h1['resistencia'] + (1.0 * atr_act)
         pct_sl = abs((sl_final - precio_act) / precio_act) * 100
@@ -330,8 +324,12 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
             ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
 
             if riesgo > 0 and ratio_actual >= 1.2: 
+                optimo_stoch = h1['stoch_rsi_k'] > 60
+                categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
+                estado_stoch_txt = f"StochRSI en zona alta ({h1['stoch_rsi_k']:.1f} > 60) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona alta ({h1['stoch_rsi_k']:.1f} <= 60) [Flexible ⚠️]"
+
                 sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴',
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'categoria': categoria,
                     'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
                     'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
                     'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
@@ -341,7 +339,8 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
                     'motivos': [
                         "Alineación bajista estructural confirmada",
                         "SuperTrend 1H en impulso negativo",
-                        f"StochRSI en zona alta ({h1['stoch_rsi_k']:.1f} > 60)"
+                        "MFI confirma salida de capital",
+                        estado_stoch_txt
                     ]
                 })
 
@@ -359,7 +358,6 @@ def evaluar_estrategia_macd(simbolo_limpio, analisis_tf):
     atr_act = h1['atr']
     macd_res = []
 
-    # REGLAS ESTRATEGIA MACD (Zonas + ADX > 18 + Tendencia Diaria)
     tendencia_diaria_alcista = d1['ema10'] > d1['ema55']
     condicion_long_macd = h1['valle_rojo_claro'] and h4['valle_rojo_claro']
     condicion_long_stoch = h1['stoch_k'] < 40
@@ -490,10 +488,15 @@ def evaluar_trade_manual(ticker_raw):
     sniper = evaluar_estrategia_sniper(simbolo_limpio, analisis_tf)
     macd_list = evaluar_estrategia_macd(simbolo_limpio, analisis_tf)
     
-    # 1. Alerta Sniper
+    estrictos = [op for op in sniper if op['categoria'] == 'ESTRICTO']
+    flexibles = [op for op in sniper if op['categoria'] == 'FLEXIBLE']
+
+    # 1. Alerta Sniper Dividida
     msj_sniper = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN SNIPER 10X: ${simbolo_limpio}*\n\n"
-    if sniper:
-        for op in sniper:
+    
+    if estrictos:
+        msj_sniper += "🟢 **SNIPER ESTRICTO (StochRSI Ideal):**\n"
+        for op in estrictos:
             msj_sniper += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
             msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
             msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
@@ -502,8 +505,24 @@ def evaluar_trade_manual(ticker_raw):
             msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
             for m in op.get('motivos', []):
                 msj_sniper += f"  • {m}\n"
-    else:
-        msj_sniper += "⚪ *SNIPER 10X:* Sin condiciones válidas (revisar StochRSI, R:R o filtros).\n"
+        msj_sniper += "\n"
+
+    if flexibles:
+        msj_sniper += "🟡 **SNIPER FLEXIBLE (StochRSI Alternativo):**\n"
+        for op in flexibles:
+            msj_sniper += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
+            msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
+            for m in op.get('motivos', []):
+                msj_sniper += f"  • {m}\n"
+        msj_sniper += "\n"
+
+    if not estrictos and not flexibles:
+        msj_sniper += "⚪ *SNIPER 10X:* Sin condiciones válidas (revisar tendencia, R:R o filtros).\n"
+        
     enviar_telegram(msj_sniper)
 
     # 2. Alerta Separada MACD
@@ -540,7 +559,7 @@ def procesar_par_paralelo(par):
     return sniper, macd_res
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando mercado de forma concurrente (Estrategias Sniper + StochRSI + MACD)...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando mercado de forma concurrente (Estrategias Sniper + MACD)...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -571,14 +590,29 @@ def enviar_resultados_escaneo_sniper(entradas_sniper):
         enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *SNIPER 10X:* No hay entradas activas en este momento.")
         return
 
-    msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n⚡ *ENTRADAS SNIPER 10X DETECTADAS:* ⚡\n\n"
-    for op in entradas_sniper[:5]:
-        msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
-        msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
-        msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
-        msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
-        msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
-        msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n\n"
+    estrictos = [op for op in entradas_sniper if op['categoria'] == 'ESTRICTO']
+    flexibles = [op for op in entradas_sniper if op['categoria'] == 'FLEXIBLE']
+
+    msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n🎯 *REPORTES DE ESTRATEGIA SNIPER 10X* 🎯\n\n"
+    
+    msj_sniper += "🟢 **1. SNIPER ESTRICTO (Con StochRSI Ideal):**\n"
+    if estrictos:
+        for op in estrictos[:5]:
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n\n"
+    else:
+        msj_sniper += "_(Sin señales en esta categoría)_ \n\n"
+
+    msj_sniper += "🟡 **2. SNIPER FLEXIBLE (StochRSI Alternativo):**\n"
+    if flexibles:
+        for op in flexibles[:5]:
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n\n"
+    else:
+        msj_sniper += "_(Sin señales en esta categoría)_ \n"
+
     enviar_telegram(msj_sniper)
 
 def enviar_resultados_escaneo_macd(entradas_macd):
@@ -717,7 +751,7 @@ if __name__ == "__main__":
                 
         if res_btc:
             precio_btc = res_btc['precio']
-            msj_inicio = f"🤖 **BOT ACTIVO (Sniper + StochRSI + Alertas MACD) ✅**\n\n"
+            msj_inicio = f"🤖 **BOT ACTIVO (Sniper Dividido + MACD) ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n"
             msj_inicio += f"📊 SuperTrend: `{res_btc['supertrend_estado']}` | StochRSI K: `{res_btc['stoch_rsi_k']:.1f}`\n"
             enviar_telegram(msj_inicio)
@@ -726,7 +760,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot integrado con StochRSI en Sniper y Alertas MACD listo.")
+    logging.info("🚀 Bot actualizado con secciones estrictas y flexibles para Sniper listo.")
     
     analizar_mercado()
     
