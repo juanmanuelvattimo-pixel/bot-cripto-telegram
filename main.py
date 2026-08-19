@@ -318,8 +318,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
   )
 
   # NUEVO: CONDICIÓN STOCH RSI 1H (Sin exigir cruce, niveles inferiores para long < 30 y superiores para short > 70)
-  filtro_stoch_rsi_long = h1['stoch_rsi_k'] < 40
-  filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 60
+  filtro_stoch_rsi_long = h1['stoch_rsi_k'] < 50
+  filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 50
 
   # FILTRO DE FLUJO DE DINERO (MFI)
   filtro_mfi_long = h1['mfi'] > 50
