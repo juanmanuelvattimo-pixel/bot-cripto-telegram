@@ -294,8 +294,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
   sniper_res = []
 
   # ADX optimizado y rangos de RSI seguros
-  adx_aprobado_long = h1['adx'] >= 18 and h1['rsi'] > 25 and h1['rsi'] < 80
-  adx_aprobado_short = h1['adx'] >= 18 and h1['rsi'] > 20 and h1['rsi'] < 75
+  adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
+  adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
 
   # FILTRO 4H (SuperTrend, EMA y RSI sincronizado)
   h4_alcista_real = (
