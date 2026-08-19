@@ -322,8 +322,8 @@ def evaluar_todas_las_estrategias(simbolo_limpio, analisis_tf):
   filtro_stoch_rsi_short = h1['stoch_rsi_k'] > 60
 
   # FILTRO DE FLUJO DE DINERO (MFI)
-  filtro_mfi_long = h1['mfi'] > 40
-  filtro_mfi_short = h1['mfi'] < 60
+  filtro_mfi_long = h1['mfi'] > 50
+  filtro_mfi_short = h1['mfi'] < 50
 
   # FILTRO ANTI-PERSECUCIÓN 1H (Reducido a 1.5x ATR)
   distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
