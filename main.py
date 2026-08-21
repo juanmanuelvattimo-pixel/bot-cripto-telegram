@@ -264,22 +264,12 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
     filtro_mfi_short = h1['mfi'] < 60
 
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 3.0 
+    max_extension_1h = h1['atr'] * 1.5 
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
     distancia_4h_ema = abs(h4['precio'] - h4['ema10'])
-    max_extension_4h = h4['atr'] * 3.0 
+    max_extension_4h = h4['atr'] * 1.5 
     filtro_4h_no_extendido = distancia_4h_ema <= max_extension_4h
-
-    es_cerca_15_1h = distancia_1h_ema <= (h1['atr'] * 1.5)
-    es_cerca_15_4h = distancia_4h_ema <= (h4['atr'] * 1.5)
-
-    if es_cerca_15_1h and es_cerca_15_4h:
-        zona_distancia = 'CERCA_1.5ATR'
-        zona_txt = "Distancia a EMA cercana (<= 1.5 ATR) 🎯"
-    else:
-        zona_distancia = 'AMPLIO_3ATR'
-        zona_txt = "Distancia a EMA amplia (hasta 3.0 ATR) 📈"
 
     filtro_rsi_no_extremo_long = h1['rsi'] < 85
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
@@ -300,30 +290,24 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
             
             if riesgo > 0 and ratio_actual >= 1.2: 
                 optimo_stoch = h1['stoch_rsi_k'] < 40
-                
-                # RESTRICCIÓN: Si es Rango Amplio (AMPLIO_3ATR), EXIGIMOS estrictamente StochRSI óptimo (< 40)
-                if zona_distancia == 'AMPLIO_3ATR' and not optimo_stoch:
-                    pass # Se descarta porque eliminamos el flexible para este rango
-                else:
-                    categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
-                    estado_stoch_txt = f"StochRSI en zona baja ({h1['stoch_rsi_k']:.1f} < 40) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona baja ({h1['stoch_rsi_k']:.1f} >= 40) [Flexible ⚠️]"
+                categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
+                estado_stoch_txt = f"StochRSI en zona baja ({h1['stoch_rsi_k']:.1f} < 40) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona baja ({h1['stoch_rsi_k']:.1f} >= 40) [Flexible ⚠️]"
 
-                    sniper_res.append({
-                        'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'categoria': categoria, 'zona_distancia': zona_distancia,
-                        'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                        'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
-                        'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                        'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                        'supertrend': h1['supertrend_estado'],
-                        'rr': f"1:{ratio_actual:.2f}",
-                        'motivos': [
-                            "Alineación alcista estructural confirmada",
-                            "SuperTrend 1H en impulso positivo",
-                            "MFI confirma flujo de entrada de capital",
-                            zona_txt,
-                            estado_stoch_txt
-                        ]
-                    })
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'categoria': categoria,
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        "Alineación alcista estructural confirmada",
+                        "SuperTrend 1H en impulso positivo",
+                        "MFI confirma flujo de entrada de capital",
+                        estado_stoch_txt
+                    ]
+                })
 
     # SHORT SNIPER
     if (d1['es_bajista'] and h4_bajista_real and adx_aprobado_short and gatillo_1h_short and 
@@ -341,32 +325,125 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
 
             if riesgo > 0 and ratio_actual >= 1.2: 
                 optimo_stoch = h1['stoch_rsi_k'] > 60
-                
-                # RESTRICCIÓN: Si es Rango Amplio (AMPLIO_3ATR), EXIGIMOS estrictamente StochRSI óptimo (> 60)
-                if zona_distancia == 'AMPLIO_3ATR' and not optimo_stoch:
-                    pass # Se descarta el flexible en rango amplio
-                else:
-                    categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
-                    estado_stoch_txt = f"StochRSI en zona alta ({h1['stoch_rsi_k']:.1f} > 60) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona alta ({h1['stoch_rsi_k']:.1f} <= 60) [Flexible ⚠️]"
+                categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
+                estado_stoch_txt = f"StochRSI en zona alta ({h1['stoch_rsi_k']:.1f} > 60) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona alta ({h1['stoch_rsi_k']:.1f} <= 60) [Flexible ⚠️]"
 
-                    sniper_res.append({
-                        'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'categoria': categoria, 'zona_distancia': zona_distancia,
-                        'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                        'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                        'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                        'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                        'supertrend': h1['supertrend_estado'],
-                        'rr': f"1:{ratio_actual:.2f}",
-                        'motivos': [
-                            "Alineación bajista estructural confirmada",
-                            "SuperTrend 1H en impulso negativo",
-                            "MFI confirma salida de capital",
-                            zona_txt,
-                            estado_stoch_txt
-                        ]
-                    })
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'categoria': categoria,
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        "Alineación bajista estructural confirmada",
+                        "SuperTrend 1H en impulso negativo",
+                        "MFI confirma salida de capital",
+                        estado_stoch_txt
+                    ]
+                })
 
     return sniper_res
+
+# ==========================================
+# SECCIÓN NUEVA: SNIPER ESTRICTO SIN DISTANCIAS A EMAS (1H y 4H)
+# ==========================================
+def evaluar_estrategia_sniper_sin_distancias(simbolo_limpio, analisis_tf):
+    if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
+        return []
+
+    d1 = analisis_tf['1d']
+    h4 = analisis_tf['4h']
+    h1 = analisis_tf['1h']
+    
+    precio_act = h1['precio']
+    atr_act = h1['atr']
+    sniper_res = []
+
+    adx_aprobado_long = h1['adx'] >= 12 and h1['rsi'] > 25 and h1['rsi'] < 80
+    adx_aprobado_short = h1['adx'] >= 12 and h1['rsi'] > 20 and h1['rsi'] < 75
+
+    h4_alcista_real = (h4['supertrend_estado'] == "🟢 ALCISTA") and (h4['precio'] > h4['ema20']) and (h4['rsi'] < 75)
+    h4_bajista_real = (h4['supertrend_estado'] == "🔴 BAJISTA") and (h4['precio'] < h4['ema20']) and (h4['rsi'] > 25)
+
+    gatillo_1h_long = h1.get('supertrend_buy', False) or ((h1['supertrend_estado'] == "🟢 ALCISTA") and h1['cierra_arriba_ema10'])
+    gatillo_1h_short = h1.get('supertrend_sell', False) or ((h1['supertrend_estado'] == "🔴 BAJISTA") and h1['cierra_abajo_ema10'])
+
+    filtro_mfi_long = h1['mfi'] > 40
+    filtro_mfi_short = h1['mfi'] < 60
+
+    filtro_rsi_no_extremo_long = h1['rsi'] < 85
+    filtro_rsi_no_extremo_short = h1['rsi'] > 15
+
+    # LONG SNIPER (ESTRICTO SIN DISTANCIAS)
+    optimo_stoch_long = h1['stoch_rsi_k'] < 40
+    if (d1['es_alcista'] and h4_alcista_real and adx_aprobado_long and gatillo_1h_long and 
+        filtro_mfi_long and filtro_rsi_no_extremo_long and optimo_stoch_long):
+        
+        sl_final = h1['soporte'] - (1.0 * atr_act)
+        pct_sl = abs((precio_act - sl_final) / precio_act) * 100
+        
+        if pct_sl <= 3.0:
+            riesgo = precio_act - sl_final
+            tp1 = precio_act + (riesgo * 1.5)
+            tp2 = precio_act + (riesgo * 2.5)
+            tp3 = precio_act + (riesgo * 3.5)
+            ratio_actual = (tp1 - precio_act) / riesgo if riesgo > 0 else 0
+            
+            if riesgo > 0 and ratio_actual >= 1.2: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'categoria': 'ESTRICTO_SIN_DISTANCIAS',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        "Alineación alcista estructural confirmada",
+                        "SuperTrend 1H en impulso positivo",
+                        "MFI confirma flujo de entrada de capital",
+                        f"StochRSI en zona baja ({h1['stoch_rsi_k']:.1f} < 40) [Óptimo Estricto ✅]",
+                        "⚠️ Sin filtro de proximidad a EMAs en 1H y 4H"
+                    ]
+                })
+
+    # SHORT SNIPER (ESTRICTO SIN DISTANCIAS)
+    optimo_stoch_short = h1['stoch_rsi_k'] > 60
+    if (d1['es_bajista'] and h4_bajista_real and adx_aprobado_short and gatillo_1h_short and 
+        filtro_mfi_short and filtro_rsi_no_extremo_short and optimo_stoch_short):
+        
+        sl_final = h1['resistencia'] + (1.0 * atr_act)
+        pct_sl = abs((sl_final - precio_act) / precio_act) * 100
+        
+        if pct_sl <= 3.0:
+            riesgo = sl_final - precio_act
+            tp1 = precio_act - (riesgo * 1.5)
+            tp2 = precio_act - (riesgo * 2.5)
+            tp3 = precio_act - (riesgo * 3.5)
+            ratio_actual = (precio_act - tp1) / riesgo if riesgo > 0 else 0
+
+            if riesgo > 0 and ratio_actual >= 1.2: 
+                sniper_res.append({
+                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'categoria': 'ESTRICTO_SIN_DISTANCIAS',
+                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                    'supertrend': h1['supertrend_estado'],
+                    'rr': f"1:{ratio_actual:.2f}",
+                    'motivos': [
+                        "Alineación bajista estructural confirmada",
+                        "SuperTrend 1H en impulso negativo",
+                        "MFI confirma salida de capital",
+                        f"StochRSI en zona alta ({h1['stoch_rsi_k']:.1f} > 60) [Óptimo Estricto ✅]",
+                        "⚠️ Sin filtro de proximidad a EMAs en 1H y 4H"
+                    ]
+                })
+
+    return sniper_res
+
 
 def evaluar_estrategia_macd(simbolo_limpio, analisis_tf):
     if '1h' not in analisis_tf or '4h' not in analisis_tf or '1d' not in analisis_tf:
@@ -508,51 +585,64 @@ def evaluar_trade_manual(ticker_raw):
         analisis_tf[tf] = res
 
     sniper = evaluar_estrategia_sniper(simbolo_limpio, analisis_tf)
+    sniper_sin_dist = evaluar_estrategia_sniper_sin_distancias(simbolo_limpio, analisis_tf)
     macd_list = evaluar_estrategia_macd(simbolo_limpio, analisis_tf)
     
-    cerca_estrictos = [op for op in sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'ESTRICTO']
-    cerca_flexibles = [op for op in sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'FLEXIBLE']
-    amplio_estrictos = [op for op in sniper if op['zona_distancia'] == 'AMPLIO_3ATR' and op['categoria'] == 'ESTRICTO']
+    estrictos = [op for op in sniper if op['categoria'] == 'ESTRICTO']
+    flexibles = [op for op in sniper if op['categoria'] == 'FLEXIBLE']
 
-    # 1. Alerta Sniper Clasificada por Distancia y StochRSI (Sin amplio flexible)
+    # 1. Alerta Sniper Dividida
     msj_sniper = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN SNIPER 10X: ${simbolo_limpio}*\n\n"
     
-    if cerca_estrictos:
-        msj_sniper += "🟢 **CERCA DE EMA (<= 1.5 ATR) - ESTRICTO:**\n"
-        for op in cerca_estrictos:
-            msj_sniper += f"⚡ *{op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
-            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
-            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n"
+    if estrictos:
+        msj_sniper += "🟢 **SNIPER ESTRICTO (StochRSI Ideal):**\n"
+        for op in estrictos:
+            msj_sniper += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
+            msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
             for m in op.get('motivos', []):
                 msj_sniper += f"  • {m}\n"
         msj_sniper += "\n"
 
-    if cerca_flexibles:
-        msj_sniper += "🟡 **CERCA DE EMA (<= 1.5 ATR) - FLEXIBLE:**\n"
-        for op in cerca_flexibles:
-            msj_sniper += f"⚡ *{op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
-            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
-            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n"
+    if flexibles:
+        msj_sniper += "🟡 **SNIPER FLEXIBLE (StochRSI Alternativo):**\n"
+        for op in flexibles:
+            msj_sniper += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
+            msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
+            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
             for m in op.get('motivos', []):
                 msj_sniper += f"  • {m}\n"
         msj_sniper += "\n"
 
-    if amplio_estrictos:
-        msj_sniper += "🔵 **RANGO AMPLIO (Hasta 3.0 ATR) - ESTRICTO:**\n"
-        for op in amplio_estrictos:
-            msj_sniper += f"⚡ *{op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
-            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
-            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n"
-            for m in op.get('motivos', []):
-                msj_sniper += f"  • {m}\n"
-        msj_sniper += "\n"
-
-    if not sniper:
+    if not estrictos and not flexibles:
         msj_sniper += "⚪ *SNIPER 10X:* Sin condiciones válidas (revisar tendencia, R:R o filtros).\n"
         
     enviar_telegram(msj_sniper)
 
-    # 2. Alerta Separada MACD
+    # 2. Alerta Separada Estricto Sin Distancias a EMAs
+    time.sleep(1.0)
+    msj_sin_dist = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *SNIPER ESTRICTO (SIN DISTANCIAS A EMAS): ${simbolo_limpio}*\n\n"
+    if sniper_sin_dist:
+        for op in sniper_sin_dist:
+            msj_sin_dist += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj_sin_dist += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
+            msj_sin_dist += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
+            msj_sin_dist += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
+            msj_sin_dist += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
+            msj_sin_dist += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
+            for m in op.get('motivos', []):
+                msj_sin_dist += f"  • {m}\n"
+    else:
+        msj_sin_dist += "⚪ *SNIPER ESTRICTO (SIN DISTANCIAS):* Sin condiciones válidas.\n"
+    enviar_telegram(msj_sin_dist)
+
+    # 3. Alerta Separada MACD
     time.sleep(1.0)
     msj_macd = f"🤖 **BOT ACTIVO ✅**\n\n🚨 *ALERTAS MACD: ${simbolo_limpio}*\n\n"
     if macd_list:
@@ -582,11 +672,12 @@ def procesar_par_paralelo(par):
     
     simbolo_limpio = par.split('/')[0]
     sniper = evaluar_estrategia_sniper(simbolo_limpio, analisis_tf)
+    sniper_sin_dist = evaluar_estrategia_sniper_sin_distancias(simbolo_limpio, analisis_tf)
     macd_res = evaluar_estrategia_macd(simbolo_limpio, analisis_tf)
-    return sniper, macd_res
+    return sniper, sniper_sin_dist, macd_res
 
 def escanear_senales_sniper_manual():
-    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando mercado de forma concurrente (Estrategias Sniper + MACD)...")
+    enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n🔍 Escaneando mercado de forma concurrente (Estrategias Sniper + Sin Distancias + MACD)...")
     
     pares_filtrados = obtener_pares_top()
     if not pares_filtrados:
@@ -594,21 +685,26 @@ def escanear_senales_sniper_manual():
         return
 
     entradas_sniper = []
+    entradas_sin_dist = []
     entradas_macd = []
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {executor.submit(procesar_par_paralelo, par): par for par in pares_filtrados}
         for future in as_completed(futures):
             try:
-                sniper, macd_res = future.result()
+                sniper, sniper_sin_dist, macd_res = future.result()
                 if sniper:
                     entradas_sniper.extend(sniper)
+                if sniper_sin_dist:
+                    entradas_sin_dist.extend(sniper_sin_dist)
                 if macd_res:
                     entradas_macd.extend(macd_res)
             except Exception as e:
                 logging.error(f"Error procesando hilo de par: {e}")
 
     enviar_resultados_escaneo_sniper(entradas_sniper)
+    time.sleep(1.5)
+    enviar_resultados_escaneo_sin_distancias(entradas_sin_dist)
     time.sleep(1.5)
     enviar_resultados_escaneo_macd(entradas_macd)
 
@@ -617,32 +713,43 @@ def enviar_resultados_escaneo_sniper(entradas_sniper):
         enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *SNIPER 10X:* No hay entradas activas en este momento.")
         return
 
-    cerca_estrictos = [op for op in entradas_sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'ESTRICTO']
-    cerca_flexibles = [op for op in entradas_sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'FLEXIBLE']
-    amplio_estrictos = [op for op in entradas_sniper if op['zona_distancia'] == 'AMPLIO_3ATR' and op['categoria'] == 'ESTRICTO']
+    estrictos = [op for op in entradas_sniper if op['categoria'] == 'ESTRICTO']
+    flexibles = [op for op in entradas_sniper if op['categoria'] == 'FLEXIBLE']
 
     msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n🎯 *REPORTES DE ESTRATEGIA SNIPER 10X* 🎯\n\n"
     
-    msj_sniper += "🟢 **1. CERCA DE EMA (<= 1.5 ATR) [Estricto & Flexible]:**\n"
-    cerca_total = cerca_estrictos + cerca_flexibles
-    if cerca_total:
-        for op in cerca_total[:5]:
-            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* [{op['categoria']}] _(R:R {op['rr']})_\n"
+    msj_sniper += "🟢 **1. SNIPER ESTRICTO (Con StochRSI Ideal):**\n"
+    if estrictos:
+        for op in estrictos[:5]:
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
-            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%)\n\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n\n"
     else:
         msj_sniper += "_(Sin señales en esta categoría)_ \n\n"
 
-    msj_sniper += "🔵 **2. RANGO AMPLIO (Hasta 3.0 ATR) [Estricto]:**\n"
-    if amplio_estrictos:
-        for op in amplio_estrictos[:5]:
-            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* [{op['categoria']}] _(R:R {op['rr']})_\n"
+    msj_sniper += "🟡 **2. SNIPER FLEXIBLE (StochRSI Alternativo):**\n"
+    if flexibles:
+        for op in flexibles[:5]:
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
             msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
-            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%)\n\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n\n"
     else:
         msj_sniper += "_(Sin señales en esta categoría)_ \n"
 
     enviar_telegram(msj_sniper)
+
+def enviar_resultados_escaneo_sin_distancias(entradas_sin_dist):
+    if not entradas_sin_dist:
+        enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *SNIPER ESTRICTO (SIN DISTANCIAS A EMAS):* No hay entradas activas.")
+        return
+
+    msj_sin_dist = "🤖 **BOT ACTIVO ✅**\n\n🎯 *REPORTES SNIPER ESTRICTO (SIN DISTANCIAS A EMAS)* 🎯\n\n"
+    for op in entradas_sin_dist[:5]:
+        msj_sin_dist += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+        msj_sin_dist += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
+        msj_sin_dist += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n\n"
+    
+    enviar_telegram(msj_sin_dist)
 
 def enviar_resultados_escaneo_macd(entradas_macd):
     if not entradas_macd:
@@ -734,21 +841,26 @@ def analizar_mercado():
             return
             
         entradas_sniper = []
+        entradas_sin_dist = []
         entradas_macd = []
         
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = {executor.submit(procesar_par_paralelo, par): par for par in pares_filtrados}
             for future in as_completed(futures):
                 try:
-                    sniper, macd_res = future.result()
+                    sniper, sniper_sin_dist, macd_res = future.result()
                     if sniper:
                         entradas_sniper.extend(sniper)
+                    if sniper_sin_dist:
+                        entradas_sin_dist.extend(sniper_sin_dist)
                     if macd_res:
                         entradas_macd.extend(macd_res)
                 except Exception as e:
                     logging.error(f"Error en tarea paralela automática: {e}")
 
         enviar_resultados_escaneo_sniper(entradas_sniper)
+        time.sleep(1.5)
+        enviar_resultados_escaneo_sin_distancias(entradas_sin_dist)
         time.sleep(1.5)
         enviar_resultados_escaneo_macd(entradas_macd)
         logging.info("✅ Escaneo automático completado.")
@@ -780,7 +892,7 @@ if __name__ == "__main__":
                 
         if res_btc:
             precio_btc = res_btc['precio']
-            msj_inicio = f"🤖 **BOT ACTIVO (Sniper Dual + MACD) ✅**\n\n"
+            msj_inicio = f"🤖 **BOT ACTIVO (Sniper + Sin Distancias + MACD) ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n"
             msj_inicio += f"📊 SuperTrend: `{res_btc['supertrend_estado']}` | StochRSI K: `{res_btc['stoch_rsi_k']:.1f}`\n"
             enviar_telegram(msj_inicio)
@@ -789,7 +901,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado sin el rango amplio flexible listo.")
+    logging.info("🚀 Bot actualizado con sección estricta sin distancias a EMAs listo.")
     
     analizar_mercado()
     
