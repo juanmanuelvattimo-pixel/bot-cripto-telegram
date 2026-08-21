@@ -264,12 +264,22 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
     filtro_mfi_short = h1['mfi'] < 60
 
     distancia_1h_ema = abs(h1['precio'] - h1['ema10'])
-    max_extension_1h = h1['atr'] * 1.5 
+    max_extension_1h = h1['atr'] * 3.0 
     filtro_1h_no_extendido = distancia_1h_ema <= max_extension_1h
 
     distancia_4h_ema = abs(h4['precio'] - h4['ema10'])
-    max_extension_4h = h4['atr'] * 1.5 
+    max_extension_4h = h4['atr'] * 3.0 
     filtro_4h_no_extendido = distancia_4h_ema <= max_extension_4h
+
+    es_cerca_15_1h = distancia_1h_ema <= (h1['atr'] * 1.5)
+    es_cerca_15_4h = distancia_4h_ema <= (h4['atr'] * 1.5)
+
+    if es_cerca_15_1h and es_cerca_15_4h:
+        zona_distancia = 'CERCA_1.5ATR'
+        zona_txt = "Distancia a EMA cercana (<= 1.5 ATR) 🎯"
+    else:
+        zona_distancia = 'AMPLIO_3ATR'
+        zona_txt = "Distancia a EMA amplia (hasta 3.0 ATR) 📈"
 
     filtro_rsi_no_extremo_long = h1['rsi'] < 85
     filtro_rsi_no_extremo_short = h1['rsi'] > 15
@@ -290,24 +300,30 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
             
             if riesgo > 0 and ratio_actual >= 1.2: 
                 optimo_stoch = h1['stoch_rsi_k'] < 40
-                categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
-                estado_stoch_txt = f"StochRSI en zona baja ({h1['stoch_rsi_k']:.1f} < 40) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona baja ({h1['stoch_rsi_k']:.1f} >= 40) [Flexible ⚠️]"
+                
+                # RESTRICCIÓN: Si es Rango Amplio (AMPLIO_3ATR), EXIGIMOS estrictamente StochRSI óptimo (< 40)
+                if zona_distancia == 'AMPLIO_3ATR' and not optimo_stoch:
+                    pass # Se descarta porque eliminamos el flexible para este rango
+                else:
+                    categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
+                    estado_stoch_txt = f"StochRSI en zona baja ({h1['stoch_rsi_k']:.1f} < 40) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona baja ({h1['stoch_rsi_k']:.1f} >= 40) [Flexible ⚠️]"
 
-                sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'categoria': categoria,
-                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                    'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
-                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                    'supertrend': h1['supertrend_estado'],
-                    'rr': f"1:{ratio_actual:.2f}",
-                    'motivos': [
-                        "Alineación alcista estructural confirmada",
-                        "SuperTrend 1H en impulso positivo",
-                        "MFI confirma flujo de entrada de capital",
-                        estado_stoch_txt
-                    ]
-                })
+                    sniper_res.append({
+                        'symbol': simbolo_limpio, 'tipo': 'LONG 🟢', 'categoria': categoria, 'zona_distancia': zona_distancia,
+                        'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                        'tp1': tp1, 'pct_tp1': abs((tp1 - precio_act)/precio_act)*100,
+                        'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                        'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                        'supertrend': h1['supertrend_estado'],
+                        'rr': f"1:{ratio_actual:.2f}",
+                        'motivos': [
+                            "Alineación alcista estructural confirmada",
+                            "SuperTrend 1H en impulso positivo",
+                            "MFI confirma flujo de entrada de capital",
+                            zona_txt,
+                            estado_stoch_txt
+                        ]
+                    })
 
     # SHORT SNIPER
     if (d1['es_bajista'] and h4_bajista_real and adx_aprobado_short and gatillo_1h_short and 
@@ -325,24 +341,30 @@ def evaluar_estrategia_sniper(simbolo_limpio, analisis_tf):
 
             if riesgo > 0 and ratio_actual >= 1.2: 
                 optimo_stoch = h1['stoch_rsi_k'] > 60
-                categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
-                estado_stoch_txt = f"StochRSI en zona alta ({h1['stoch_rsi_k']:.1f} > 60) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona alta ({h1['stoch_rsi_k']:.1f} <= 60) [Flexible ⚠️]"
+                
+                # RESTRICCIÓN: Si es Rango Amplio (AMPLIO_3ATR), EXIGIMOS estrictamente StochRSI óptimo (> 60)
+                if zona_distancia == 'AMPLIO_3ATR' and not optimo_stoch:
+                    pass # Se descarta el flexible en rango amplio
+                else:
+                    categoria = 'ESTRICTO' if optimo_stoch else 'FLEXIBLE'
+                    estado_stoch_txt = f"StochRSI en zona alta ({h1['stoch_rsi_k']:.1f} > 60) [Óptimo ✅]" if optimo_stoch else f"StochRSI fuera de zona alta ({h1['stoch_rsi_k']:.1f} <= 60) [Flexible ⚠️]"
 
-                sniper_res.append({
-                    'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'categoria': categoria,
-                    'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
-                    'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
-                    'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
-                    'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
-                    'supertrend': h1['supertrend_estado'],
-                    'rr': f"1:{ratio_actual:.2f}",
-                    'motivos': [
-                        "Alineación bajista estructural confirmada",
-                        "SuperTrend 1H en impulso negativo",
-                        "MFI confirma salida de capital",
-                        estado_stoch_txt
-                    ]
-                })
+                    sniper_res.append({
+                        'symbol': simbolo_limpio, 'tipo': 'SHORT 🔴', 'categoria': categoria, 'zona_distancia': zona_distancia,
+                        'precio': precio_act, 'sl': sl_final, 'pct_sl': pct_sl,
+                        'tp1': tp1, 'pct_tp1': abs((precio_act - tp1)/precio_act)*100,
+                        'tp2': tp2, 'pct_tp2': abs((tp2 - precio_act)/precio_act)*100,
+                        'tp3': tp3, 'pct_tp3': abs((tp3 - precio_act)/precio_act)*100,
+                        'supertrend': h1['supertrend_estado'],
+                        'rr': f"1:{ratio_actual:.2f}",
+                        'motivos': [
+                            "Alineación bajista estructural confirmada",
+                            "SuperTrend 1H en impulso negativo",
+                            "MFI confirma salida de capital",
+                            zona_txt,
+                            estado_stoch_txt
+                        ]
+                    })
 
     return sniper_res
 
@@ -488,39 +510,44 @@ def evaluar_trade_manual(ticker_raw):
     sniper = evaluar_estrategia_sniper(simbolo_limpio, analisis_tf)
     macd_list = evaluar_estrategia_macd(simbolo_limpio, analisis_tf)
     
-    estrictos = [op for op in sniper if op['categoria'] == 'ESTRICTO']
-    flexibles = [op for op in sniper if op['categoria'] == 'FLEXIBLE']
+    cerca_estrictos = [op for op in sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'ESTRICTO']
+    cerca_flexibles = [op for op in sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'FLEXIBLE']
+    amplio_estrictos = [op for op in sniper if op['zona_distancia'] == 'AMPLIO_3ATR' and op['categoria'] == 'ESTRICTO']
 
-    # 1. Alerta Sniper Dividida
+    # 1. Alerta Sniper Clasificada por Distancia y StochRSI (Sin amplio flexible)
     msj_sniper = f"🤖 **BOT ACTIVO ✅**\n\n🎯 *EVALUACIÓN SNIPER 10X: ${simbolo_limpio}*\n\n"
     
-    if estrictos:
-        msj_sniper += "🟢 **SNIPER ESTRICTO (StochRSI Ideal):**\n"
-        for op in estrictos:
-            msj_sniper += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
-            msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
-            msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
+    if cerca_estrictos:
+        msj_sniper += "🟢 **CERCA DE EMA (<= 1.5 ATR) - ESTRICTO:**\n"
+        for op in cerca_estrictos:
+            msj_sniper += f"⚡ *{op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n"
             for m in op.get('motivos', []):
                 msj_sniper += f"  • {m}\n"
         msj_sniper += "\n"
 
-    if flexibles:
-        msj_sniper += "🟡 **SNIPER FLEXIBLE (StochRSI Alternativo):**\n"
-        for op in flexibles:
-            msj_sniper += f"⚡ *ESTRATEGIA {op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
-            msj_sniper += f"💵 *Entrada:* `{fmt_precio(op['precio'])}`\n"
-            msj_sniper += f"🛑 *Stop Loss:* `{fmt_precio(op['sl'])}` _(-{op['pct_sl']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP1:* `{fmt_precio(op['tp1'])}` _(+{op['pct_tp1']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP2:* `{fmt_precio(op['tp2'])}` _(+{op['pct_tp2']:.2f}%)_\n"
-            msj_sniper += f"🎯 *TP3:* `{fmt_precio(op['tp3'])}` _(+{op['pct_tp3']:.2f}%)_\n"
+    if cerca_flexibles:
+        msj_sniper += "🟡 **CERCA DE EMA (<= 1.5 ATR) - FLEXIBLE:**\n"
+        for op in cerca_flexibles:
+            msj_sniper += f"⚡ *{op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n"
             for m in op.get('motivos', []):
                 msj_sniper += f"  • {m}\n"
         msj_sniper += "\n"
 
-    if not estrictos and not flexibles:
+    if amplio_estrictos:
+        msj_sniper += "🔵 **RANGO AMPLIO (Hasta 3.0 ATR) - ESTRICTO:**\n"
+        for op in amplio_estrictos:
+            msj_sniper += f"⚡ *{op['tipo']}: APROBADA* _(R:R {op['rr']})_\n"
+            msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n"
+            for m in op.get('motivos', []):
+                msj_sniper += f"  • {m}\n"
+        msj_sniper += "\n"
+
+    if not sniper:
         msj_sniper += "⚪ *SNIPER 10X:* Sin condiciones válidas (revisar tendencia, R:R o filtros).\n"
         
     enviar_telegram(msj_sniper)
@@ -590,26 +617,28 @@ def enviar_resultados_escaneo_sniper(entradas_sniper):
         enviar_telegram("🤖 **BOT ACTIVO ✅**\n\n❌ *SNIPER 10X:* No hay entradas activas en este momento.")
         return
 
-    estrictos = [op for op in entradas_sniper if op['categoria'] == 'ESTRICTO']
-    flexibles = [op for op in entradas_sniper if op['categoria'] == 'FLEXIBLE']
+    cerca_estrictos = [op for op in entradas_sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'ESTRICTO']
+    cerca_flexibles = [op for op in entradas_sniper if op['zona_distancia'] == 'CERCA_1.5ATR' and op['categoria'] == 'FLEXIBLE']
+    amplio_estrictos = [op for op in entradas_sniper if op['zona_distancia'] == 'AMPLIO_3ATR' and op['categoria'] == 'ESTRICTO']
 
     msj_sniper = "🤖 **BOT ACTIVO ✅**\n\n🎯 *REPORTES DE ESTRATEGIA SNIPER 10X* 🎯\n\n"
     
-    msj_sniper += "🟢 **1. SNIPER ESTRICTO (Con StochRSI Ideal):**\n"
-    if estrictos:
-        for op in estrictos[:5]:
-            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+    msj_sniper += "🟢 **1. CERCA DE EMA (<= 1.5 ATR) [Estricto & Flexible]:**\n"
+    cerca_total = cerca_estrictos + cerca_flexibles
+    if cerca_total:
+        for op in cerca_total[:5]:
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* [{op['categoria']}] _(R:R {op['rr']})_\n"
             msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
-            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%)\n\n"
     else:
         msj_sniper += "_(Sin señales en esta categoría)_ \n\n"
 
-    msj_sniper += "🟡 **2. SNIPER FLEXIBLE (StochRSI Alternativo):**\n"
-    if flexibles:
-        for op in flexibles[:5]:
-            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* _(R:R {op['rr']})_\n"
+    msj_sniper += "🔵 **2. RANGO AMPLIO (Hasta 3.0 ATR) [Estricto]:**\n"
+    if amplio_estrictos:
+        for op in amplio_estrictos[:5]:
+            msj_sniper += f"🪙 *{op['symbol']}* -> *{op['tipo']}* [{op['categoria']}] _(R:R {op['rr']})_\n"
             msj_sniper += f"💵 Entrada: `{fmt_precio(op['precio'])}` | 🛑 SL: `{fmt_precio(op['sl'])}` (-{op['pct_sl']:.2f}%)\n"
-            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%) | TP2: `{fmt_precio(op['tp2'])}`\n\n"
+            msj_sniper += f"🎯 TP1: `{fmt_precio(op['tp1'])}` (+{op['pct_tp1']:.2f}%)\n\n"
     else:
         msj_sniper += "_(Sin señales en esta categoría)_ \n"
 
@@ -751,7 +780,7 @@ if __name__ == "__main__":
                 
         if res_btc:
             precio_btc = res_btc['precio']
-            msj_inicio = f"🤖 **BOT ACTIVO (Sniper Dividido + MACD) ✅**\n\n"
+            msj_inicio = f"🤖 **BOT ACTIVO (Sniper Dual + MACD) ✅**\n\n"
             msj_inicio += f"🪙 **Bitcoin (BTC)** -> Precio Actual: `{fmt_precio(precio_btc)}` USDT\n"
             msj_inicio += f"📊 SuperTrend: `{res_btc['supertrend_estado']}` | StochRSI K: `{res_btc['stoch_rsi_k']:.1f}`\n"
             enviar_telegram(msj_inicio)
@@ -760,7 +789,7 @@ if __name__ == "__main__":
     except Exception as e:
         enviar_telegram(f"🤖 **BOT ACTIVO ✅**\n\nEl bot se ha iniciado correctamente (Error al consultar BTC: {e})")
 
-    logging.info("🚀 Bot actualizado con secciones estrictas y flexibles para Sniper listo.")
+    logging.info("🚀 Bot actualizado sin el rango amplio flexible listo.")
     
     analizar_mercado()
     
